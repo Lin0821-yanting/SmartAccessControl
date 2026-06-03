@@ -11,7 +11,7 @@ Coverage target: ≥ 90% of src/actuator_controller.py (enforced by CI).
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, call
 
 import pytest
 
