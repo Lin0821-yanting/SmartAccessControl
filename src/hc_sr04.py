@@ -1,8 +1,8 @@
 import time
 import Jetson.GPIO as GPIO
 
-TRIG_PIN: int = 11
-ECHO_PIN: int = 13
+TRIG_PIN: int = 31
+ECHO_PIN: int = 15
 SPEED_OF_SOUND_CM_PER_S: float = 34300.0
 TRIGGER_PULSE_S: float = 10e-6
 ECHO_TIMEOUT_S: float = 0.05

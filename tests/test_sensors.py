@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 <Your Name(s)>
+# Copyright (c) 2026 <Yanting Lin>
 # Tatung University — I4210 AI實務專題
 """tests/test_sensors.py — unit tests for LED, Servo, Buzzer, and HC_SR04.
 
@@ -9,27 +9,10 @@ without a real Jetson — no hardware required.
 
 from __future__ import annotations
 
-import sys
-import types
 from unittest.mock import MagicMock, call, patch
+from tests.conftest import _gpio_mock
 
 import pytest
-
-# ---------------------------------------------------------------------------
-# Stub out Jetson.GPIO before any src import so the modules load cleanly
-# on x86 CI runners that don't have the package installed.
-# ---------------------------------------------------------------------------
-_gpio_mock = MagicMock()
-_gpio_mock.BOARD = "BOARD"
-_gpio_mock.OUT = "OUT"
-_gpio_mock.IN = "IN"
-_gpio_mock.HIGH = 1
-_gpio_mock.LOW = 0
-
-_jetson_pkg = types.ModuleType("Jetson")
-_jetson_pkg.GPIO = _gpio_mock
-sys.modules.setdefault("Jetson", _jetson_pkg)
-sys.modules.setdefault("Jetson.GPIO", _gpio_mock)
 
 # Now safe to import the modules under test
 from src.led import GREEN_LED_HOLD_S, LED, RED_LED_HOLD_S  # noqa: E402
@@ -65,34 +48,34 @@ class TestLED:
 
     def test_init_sets_both_pins_as_output(self) -> None:
         """Constructor must configure both green and red pins as OUT."""
-        led = LED(green_pin=16, red_pin=18)
+        led = LED(green_pin=7, red_pin=11)
         setup_calls = [c for c in _gpio_mock.setup.call_args_list]
         pins_set = {c.args[0] for c in setup_calls}
-        assert 16 in pins_set
-        assert 18 in pins_set
-        assert led.green_pin == 16
-        assert led.red_pin == 18
+        assert 7 in pins_set
+        assert 11 in pins_set
+        assert led.green_pin == 7
+        assert led.red_pin == 11
 
     def test_indicate_success_lights_green_pin(self) -> None:
         """indicate(True) must drive the green pin HIGH then LOW."""
-        led = LED(green_pin=16, red_pin=18)
+        led = LED(green_pin=7, red_pin=11)
         _gpio_mock.reset_mock()
         with patch("time.sleep"):
             led.indicate(success=True)
-        high_call = call(16, _gpio_mock.HIGH)
-        low_call = call(16, _gpio_mock.LOW)
+        high_call = call(7, _gpio_mock.HIGH)
+        low_call = call(7, _gpio_mock.LOW)
         output_calls = _gpio_mock.output.call_args_list
         assert high_call in output_calls
         assert low_call in output_calls
 
     def test_indicate_failure_lights_red_pin(self) -> None:
         """indicate(False) must drive the red pin HIGH then LOW."""
-        led = LED(green_pin=16, red_pin=18)
+        led = LED(green_pin=7, red_pin=11)
         _gpio_mock.reset_mock()
         with patch("time.sleep"):
             led.indicate(success=False)
-        high_call = call(18, _gpio_mock.HIGH)
-        low_call = call(18, _gpio_mock.LOW)
+        high_call = call(11, _gpio_mock.HIGH)
+        low_call = call(11, _gpio_mock.LOW)
         output_calls = _gpio_mock.output.call_args_list
         assert high_call in output_calls
         assert low_call in output_calls
@@ -103,14 +86,14 @@ class TestLED:
     ])
     def test_indicate_default_duration(self, success: bool, expected_duration: float) -> None:
         """indicate() without explicit duration uses the module-level constant."""
-        led = LED(green_pin=16, red_pin=18)
+        led = LED(green_pin=7, red_pin=11)
         with patch("time.sleep") as mock_sleep:
             led.indicate(success=success)
         mock_sleep.assert_called_once_with(expected_duration)
 
     def test_indicate_custom_duration_overrides_default(self) -> None:
         """A caller-supplied duration must be forwarded to time.sleep."""
-        led = LED(green_pin=16, red_pin=18)
+        led = LED(green_pin=7, red_pin=11)
         custom = 9.9
         with patch("time.sleep") as mock_sleep:
             led.indicate(success=True, duration=custom)
@@ -118,22 +101,22 @@ class TestLED:
 
     def test_cleanup_drives_both_pins_low_then_releases(self) -> None:
         """cleanup() must set both pins LOW and call GPIO.cleanup."""
-        led = LED(green_pin=16, red_pin=18)
+        led = LED(green_pin=7, red_pin=11)
         _gpio_mock.reset_mock()
         led.cleanup()
         output_calls = _gpio_mock.output.call_args_list
-        assert call(16, _gpio_mock.LOW) in output_calls
-        assert call(18, _gpio_mock.LOW) in output_calls
+        assert call(7, _gpio_mock.LOW) in output_calls
+        assert call(11, _gpio_mock.LOW) in output_calls
         _gpio_mock.cleanup.assert_called_once()
 
     def test_indicate_does_not_touch_opposite_pin(self) -> None:
         """indicate(True) must never toggle the red pin and vice-versa."""
-        led = LED(green_pin=16, red_pin=18)
+        led = LED(green_pin=7, red_pin=11)
         _gpio_mock.reset_mock()
         with patch("time.sleep"):
             led.indicate(success=True)
         for c in _gpio_mock.output.call_args_list:
-            assert c.args[0] != 18, "Red pin must not be touched on success"
+            assert c.args[0] != 11, "Red pin must not be touched on success"
 
 
 # ===========================================================================
@@ -146,13 +129,13 @@ class TestBuzzer:
 
     def test_init_configures_pin_as_output(self) -> None:
         """Constructor must call GPIO.setup with OUT on the buzzer pin."""
-        Buzzer(pin=22)
+        Buzzer(pin=29)
         setup_pins = {c.args[0] for c in _gpio_mock.setup.call_args_list}
-        assert 22 in setup_pins
+        assert 29 in setup_pins
 
     def test_indicate_success_produces_single_beep(self) -> None:
         """indicate(True) must produce exactly one HIGH→LOW transition."""
-        buz = Buzzer(pin=22)
+        buz = Buzzer(pin=29)
         _gpio_mock.reset_mock()
         with patch("time.sleep"):
             buz.indicate(success=True)
@@ -162,7 +145,7 @@ class TestBuzzer:
 
     def test_indicate_failure_produces_two_beeps(self) -> None:
         """indicate(False) must produce exactly two HIGH→LOW transitions."""
-        buz = Buzzer(pin=22)
+        buz = Buzzer(pin=29)
         _gpio_mock.reset_mock()
         with patch("time.sleep"):
             buz.indicate(success=False)
@@ -172,7 +155,7 @@ class TestBuzzer:
 
     def test_indicate_failure_sleep_sequence(self) -> None:
         """indicate(False) must sleep: BEEP_ON_S → BEEP_OFF_S → LONG_BEEP_S."""
-        buz = Buzzer(pin=22)
+        buz = Buzzer(pin=29)
         with patch("time.sleep") as mock_sleep:
             buz.indicate(success=False)
         durations = [c.args[0] for c in mock_sleep.call_args_list]
@@ -180,17 +163,17 @@ class TestBuzzer:
 
     def test_indicate_success_sleep_duration(self) -> None:
         """indicate(True) must sleep for BEEP_ON_S only."""
-        buz = Buzzer(pin=22)
+        buz = Buzzer(pin=29)
         with patch("time.sleep") as mock_sleep:
             buz.indicate(success=True)
         assert mock_sleep.call_args_list == [call(BEEP_ON_S)]
 
     def test_cleanup_drives_pin_low_and_releases(self) -> None:
         """cleanup() must drive pin LOW then call GPIO.cleanup."""
-        buz = Buzzer(pin=22)
+        buz = Buzzer(pin=29)
         _gpio_mock.reset_mock()
         buz.cleanup()
-        assert call(22, _gpio_mock.LOW) in _gpio_mock.output.call_args_list
+        assert call(29, _gpio_mock.LOW) in _gpio_mock.output.call_args_list
         _gpio_mock.cleanup.assert_called_once()
 
     def test_custom_pin_forwarded_to_gpio(self) -> None:
@@ -289,14 +272,14 @@ class TestHCSR04:
 
     def test_init_configures_trigger_as_out_and_echo_as_in(self) -> None:
         """Constructor must set trigger=OUT and echo=IN."""
-        HC_SR04(trigger_pin=11, echo_pin=13)
+        HC_SR04(trigger_pin=31, echo_pin=15)
         calls = {c.args[0]: c.args[1] for c in _gpio_mock.setup.call_args_list}
-        assert calls.get(11) == _gpio_mock.OUT
-        assert calls.get(13) == _gpio_mock.IN
+        assert calls.get(31) == _gpio_mock.OUT
+        assert calls.get(15) == _gpio_mock.IN
 
     def test_measure_distance_returns_inf_on_echo_timeout(self) -> None:
         """_measure_distance() must return inf when echo never goes HIGH."""
-        sensor = HC_SR04(trigger_pin=11, echo_pin=13)
+        sensor = HC_SR04(trigger_pin=31, echo_pin=15)
         # Echo pin 一直是 LOW → while LOW loop 一直跑 → timeout
         # monotonic 呼叫順序：
         #   [1] deadline = monotonic() + ECHO_TIMEOUT_S  → 0.0
@@ -309,7 +292,7 @@ class TestHCSR04:
 
     def test_measure_distance_calculation(self) -> None:
         """_measure_distance() must compute distance using the speed-of-sound formula."""
-        sensor = HC_SR04(trigger_pin=11, echo_pin=13)
+        sensor = HC_SR04(trigger_pin=31, echo_pin=15)
         echo_duration = 0.001  # 1 ms → 17.15 cm
         expected = echo_duration * SPEED_OF_SOUND_CM_PER_S / 2.0
 
@@ -346,7 +329,7 @@ class TestHCSR04:
 
     def test_confirmed_near_requires_majority_reads(self) -> None:
         """_confirmed_near() must return True only when ≥2 of 3 reads are within threshold."""
-        sensor = HC_SR04(trigger_pin=11, echo_pin=13, threshold_cm=60.0)
+        sensor = HC_SR04(trigger_pin=31, echo_pin=15, threshold_cm=60.0)
         near = 30.0
         far = 100.0
         # 2 near, 1 far → majority → True
@@ -355,13 +338,13 @@ class TestHCSR04:
 
     def test_confirmed_near_false_when_minority_readings(self) -> None:
         """_confirmed_near() must return False when only 1 of 3 reads is near."""
-        sensor = HC_SR04(trigger_pin=11, echo_pin=13, threshold_cm=60.0)
+        sensor = HC_SR04(trigger_pin=31, echo_pin=15, threshold_cm=60.0)
         with patch.object(sensor, "_measure_distance", side_effect=[30.0, 100.0, 100.0]):
             assert sensor._confirmed_near() is False
 
     def test_is_someone_near_delegates_to_confirmed_near(self) -> None:
         """is_someone_near() is the public API for _confirmed_near()."""
-        sensor = HC_SR04(trigger_pin=11, echo_pin=13)
+        sensor = HC_SR04(trigger_pin=31, echo_pin=15)
         with patch.object(sensor, "_confirmed_near", return_value=True) as mock_cn:
             result = sensor.is_someone_near()
         mock_cn.assert_called_once()
@@ -369,7 +352,7 @@ class TestHCSR04:
 
     def test_wait_for_person_polls_until_near(self) -> None:
         """wait_for_person() must loop until _confirmed_near() returns True."""
-        sensor = HC_SR04(trigger_pin=11, echo_pin=13)
+        sensor = HC_SR04(trigger_pin=31, echo_pin=15)
         # False twice, then True on third call
         with patch.object(sensor, "_confirmed_near", side_effect=[False, False, True]):
             with patch("time.sleep") as mock_sleep:
@@ -379,20 +362,20 @@ class TestHCSR04:
 
     def test_custom_threshold_passed_into_instance(self) -> None:
         """A non-default threshold_cm must be stored and honoured."""
-        sensor = HC_SR04(trigger_pin=11, echo_pin=13, threshold_cm=30.0)
+        sensor = HC_SR04(trigger_pin=31, echo_pin=15, threshold_cm=30.0)
         assert sensor.threshold_cm == 30.0
         with patch.object(sensor, "_measure_distance", side_effect=[29.0, 29.0, 29.0]):
             assert sensor._confirmed_near() is True
 
     def test_cleanup_releases_both_pins(self) -> None:
         """cleanup() must call GPIO.cleanup with both trigger and echo pins."""
-        sensor = HC_SR04(trigger_pin=11, echo_pin=13)
+        sensor = HC_SR04(trigger_pin=31, echo_pin=15)
         _gpio_mock.reset_mock()
         sensor.cleanup()
         _gpio_mock.cleanup.assert_called_once()
         released = set(_gpio_mock.cleanup.call_args.args[0])
-        assert 11 in released
-        assert 13 in released
+        assert 31 in released
+        assert 15 in released
 
     def test_default_threshold_constant(self) -> None:
         """Default threshold_cm must equal the module-level APPROACH_THRESHOLD_CM."""

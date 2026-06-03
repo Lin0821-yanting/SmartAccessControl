@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 <Your Name>, <Partner's Name>
+# Copyright (c) 2026 <Yanting Lin>, <Partner's Name>
 # Tatung University — I4210 AI實務專題
 """tests/test_actuator_controller.py — unit tests for ActuatorController.
 
@@ -11,26 +11,9 @@ Coverage target: ≥ 90% of src/actuator_controller.py (enforced by CI).
 
 from __future__ import annotations
 
-import sys
-import types
 from unittest.mock import MagicMock, call, patch
 
 import pytest
-
-# ---------------------------------------------------------------------------
-# Stub out Jetson.GPIO before any src import — same pattern as test_sensors.py
-# ---------------------------------------------------------------------------
-_gpio_mock = MagicMock()
-_gpio_mock.BOARD = "BOARD"
-_gpio_mock.OUT = "OUT"
-_gpio_mock.IN = "IN"
-_gpio_mock.HIGH = 1
-_gpio_mock.LOW = 0
-
-_jetson_pkg = types.ModuleType("Jetson")
-_jetson_pkg.GPIO = _gpio_mock
-sys.modules.setdefault("Jetson", _jetson_pkg)
-sys.modules.setdefault("Jetson.GPIO", _gpio_mock)
 
 # Safe to import after the stub is in place
 from src.actuator_controller import (  # noqa: E402

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 <Your Name>, <Partner's Name>
+# Copyright (c) 2026 <Yanting Lin>, <Partner's Name>
 # Tatung University — I4210 AI實務專題
 """
 actuator_controller.py
@@ -22,9 +22,9 @@ import logging
 import threading
 from typing import Optional
 
-from led import LED
-from buzzer import Buzzer
-from servo import Servo
+from src.led import LED
+from src.buzzer import Buzzer
+from src.servo import Servo
 
 logger = logging.getLogger(__name__)
 

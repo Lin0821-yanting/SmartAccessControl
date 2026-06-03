@@ -1,8 +1,8 @@
 import time
 import Jetson.GPIO as GPIO
 
-GREEN_LED_PIN: int = 16
-RED_LED_PIN: int = 18
+GREEN_LED_PIN: int = 7
+RED_LED_PIN: int = 11
 GREEN_LED_HOLD_S: float = 3.0
 RED_LED_HOLD_S: float = 2.0
 

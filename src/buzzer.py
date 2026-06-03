@@ -1,14 +1,14 @@
 import time
 import Jetson.GPIO as GPIO
 
-BUZZER_PIN: int = 22
+BUZZER_PIN: int = 29
 BEEP_ON_S: float = 0.2
 BEEP_OFF_S: float = 0.1
 LONG_BEEP_S: float = 0.6
 
 
 class Buzzer:
-    """Piezo buzzer on Jetson pin 22."""
+    """Piezo buzzer on Jetson pin 29."""
 
     def __init__(self, pin: int = BUZZER_PIN) -> None:
         self.pin = pin
