@@ -21,3 +21,14 @@ for pkg in certifi cycler kiwisolver; do
     [ -e $LOCAL/$pkg ] && ln -sf $LOCAL/$pkg $VENV_SITE/$pkg
 done
 ```
+#MODELS
+```
+YOLOFACE
+https://github.com/Yusepp/YOLOv8-Face.git
+
+MOBILEFACENET
+https://github.com/foamliu/MobileFaceNet.git
+
+MINIFASNET
+https://github.com/facenox/face-antispoof-onnx.git
+```
