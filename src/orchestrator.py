@@ -41,7 +41,7 @@ import yaml
 from src.decision_engine import Decision, DecisionEngine, LIVENESS_THRESHOLD
 from src.actuator_controller import ActuatorController
 from src.mqtt_publisher import MqttPublisher
-from src.hc_sr04 import HCSR04
+from src.hc_sr04 import HC_SR04
 
 # M1 modules — imported by path so the orchestrator is not tightly coupled
 # to M1's internal package structure.
@@ -114,7 +114,7 @@ class Orchestrator:
         engine: DecisionEngine,
         actuator: ActuatorController,
         publisher: MqttPublisher,
-        sensor: HCSR04,
+        sensor: HC_SR04,
         display: bool = False,
     ) -> None:
         self._detector   = detector
@@ -203,7 +203,7 @@ class Orchestrator:
             broker_host=q.get("broker_host", "localhost"),
             broker_port=q.get("broker_port", 1883),
         )
-        sensor    = HCSR04()
+        sensor    = HC_SR04()
 
         return cls(
             detector=detector,
