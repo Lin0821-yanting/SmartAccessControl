@@ -28,7 +28,6 @@ from __future__ import annotations
 
 from enum import Enum, auto
 
-
 # ---------------------------------------------------------------------------
 # Module-level thresholds — named constants so unit tests can import them
 # directly and callers can override via DecisionEngine.__init__ kwargs.

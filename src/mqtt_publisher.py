@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
@@ -76,8 +77,23 @@ class MqttPublisher:
         broker_host: str = DEFAULT_BROKER_HOST,
         broker_port: int = DEFAULT_BROKER_PORT,
         client_id: str = "jetson-access-control",
-        client_factory=None,
+        client_factory: Callable[[], mqtt.Client] | None = None,
     ) -> None:
+        """Initialise the paho client and configure exponential reconnect.
+
+        Parameters
+        ----------
+        broker_host:
+            Hostname or IP of the MQTT broker.
+        broker_port:
+            TCP port of the broker.
+        client_id:
+            MQTT client identifier string sent to the broker on connect.
+        client_factory:
+            Optional zero-argument callable that returns a
+            ``paho.mqtt.client.Client`` instance.  Pass a factory that
+            returns a ``MagicMock`` in unit tests to avoid real network I/O.
+        """
         self._broker_host = broker_host
         self._broker_port = broker_port
         self._connected = False

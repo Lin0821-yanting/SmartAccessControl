@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 <Yanting Lin>, <Partner's Name>
 # Tatung University — I4210 AI實務專題
-"""
-actuator_controller.py
-~~~~~~~~~~~~~~~~~~~~~~
-High-level actuator façade for the door-access system.
+"""High-level actuator façade for the door-access system.
 
 Decision engine calls one of four semantic methods; this module owns
 all hardware timing constants and drives LED / Buzzer / Servo through
@@ -20,10 +17,9 @@ Decision → ActuatorController method mapping (from proposal §4.5):
 
 import logging
 import threading
-from typing import Optional
 
-from src.led import LED
 from src.buzzer import Buzzer
+from src.led import LED
 from src.servo import Servo
 
 logger = logging.getLogger(__name__)
@@ -40,8 +36,7 @@ _BEEP_OFF_S: float = 0.15       # buzzer OFF gap between beeps
 
 
 class ActuatorController:
-    """
-    Semantic façade over LED, Buzzer, and Servo.
+    """Semantic façade over LED, Buzzer, and Servo.
 
     Each public method maps 1-to-1 with a decision outcome and fully
     encapsulates the required hardware sequence.  Callers must NOT
@@ -64,11 +59,12 @@ class ActuatorController:
 
     def __init__(
         self,
-        led: Optional[LED] = None,
-        buzzer: Optional[Buzzer] = None,
-        servo: Optional[Servo] = None,
+        led: LED | None = None,
+        buzzer: Buzzer | None = None,
+        servo: Servo | None = None,
     ) -> None:
-        """
+        """Initialise with optional injected hardware instances.
+
         Parameters
         ----------
         led, buzzer, servo:
@@ -85,11 +81,12 @@ class ActuatorController:
     # ------------------------------------------------------------------
 
     def grant_access(self) -> None:
-        """
-        GRANT decision:
-          1. Servo rotates to 90° (latch opens)
-          2. Green LED illuminates for GRANT_LED_S seconds
-          3. Servo auto-returns to 0° (latch closes)
+        """Unlock the door latch and illuminate the green LED.
+
+        Sequence:
+          1. Servo rotates to 90° (latch opens).
+          2. Green LED illuminates for _GRANT_LED_S seconds.
+          3. Servo auto-returns to 0° (latch closes).
 
         The servo relock happens inside unlock_then_relock(), which blocks
         for UNLOCK_HOLD_S seconds, so this call is synchronous.
@@ -108,18 +105,20 @@ class ActuatorController:
             servo_thread.join()  # ensure servo relocks before method returns
 
     def deny_access(self) -> None:
-        """
-        DENY decision (face in DB but similarity < 0.85):
-          Red LED ON for DENY_LED_S seconds. No buzzer, no servo action.
+        """Illuminate the red LED to signal a denied access attempt.
+
+        Triggered when the face is in the DB but similarity < 0.85.
+        Red LED ON for _DENY_LED_S seconds. No buzzer, no servo action.
         """
         with self._lock:
             logger.info("ACT DENY — red LED")
             self._led.indicate(success=False, duration=_DENY_LED_S)
 
     def alert_unknown(self) -> None:
-        """
-        UNKNOWN decision (face detected but not enrolled):
-          Red LED ON for DENY_LED_S seconds + ALERT_BEEPS buzzer pulses.
+        """Alert with red LED and buzzer for an unrecognised face.
+
+        Triggered when a face is detected but is not enrolled in the DB.
+        Red LED ON for _DENY_LED_S seconds, plus _ALERT_BEEPS buzzer pulses.
         """
         with self._lock:
             logger.info("ACT UNKNOWN — red LED + %d beeps", _ALERT_BEEPS)
@@ -134,10 +133,10 @@ class ActuatorController:
             led_thread.join()
 
     def alert_spoof(self) -> None:
-        """
-        SPOOF decision (anti-spoof liveness check failed):
-          Identical hardware sequence to alert_unknown().
-          The distinction is handled upstream (MQTT payload differs).
+        """Alert with red LED and buzzer when a liveness check fails.
+
+        Identical hardware sequence to alert_unknown().
+        The distinction is handled upstream via the MQTT payload.
         """
         with self._lock:
             logger.info("ACT SPOOF — red LED + %d beeps", _ALERT_BEEPS)
@@ -172,6 +171,6 @@ class ActuatorController:
             # Directly drive buzzer pin via its private _beep if available,
             # otherwise fall back to indicate(success=False) once.
             # Using internal _beep gives us finer control over count and gap.
-            self._buzzer._beep(_BEEP_ON_S)  # noqa: SLF001
+            self._buzzer._beep(_BEEP_ON_S)
             if i < count - 1:
                 time.sleep(_BEEP_OFF_S)
