@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 <Yanting Lin>
 # Tatung University — I4210 AI實務專題
-"""tests/test_sensors.py — unit tests for LED, Servo, Buzzer, and HC_SR04.
+"""tests/test_sensors.py — unit tests for LED, Servo, Buzzer, and HcSr04.
 
 All GPIO calls are mocked so these tests run on any x86 CI runner
 without a real Jetson — no hardware required.
@@ -20,7 +20,7 @@ from src.buzzer import BEEP_OFF_S, BEEP_ON_S, LONG_BEEP_S, Buzzer  # noqa: E402
 from src.servo import DUTY_LOCKED, DUTY_UNLOCKED, UNLOCK_HOLD_S, Servo  # noqa: E402
 from src.hc_sr04 import (  # noqa: E402
     APPROACH_THRESHOLD_CM,
-    HC_SR04,
+    HcSr04,
     POLL_INTERVAL_S,
     SPEED_OF_SOUND_CM_PER_S,
 )
@@ -263,7 +263,7 @@ class TestServo:
 
 
 # ===========================================================================
-# HC_SR04 tests  (≥ 6)
+# HcSr04 tests  (≥ 6)
 # ===========================================================================
 
 
@@ -272,14 +272,14 @@ class TestHCSR04:
 
     def test_init_configures_trigger_as_out_and_echo_as_in(self) -> None:
         """Constructor must set trigger=OUT and echo=IN."""
-        HC_SR04(trigger_pin=31, echo_pin=15)
+        HcSr04(trigger_pin=31, echo_pin=15)
         calls = {c.args[0]: c.args[1] for c in _gpio_mock.setup.call_args_list}
         assert calls.get(31) == _gpio_mock.OUT
         assert calls.get(15) == _gpio_mock.IN
 
     def test_measure_distance_returns_inf_on_echo_timeout(self) -> None:
         """_measure_distance() must return inf when echo never goes HIGH."""
-        sensor = HC_SR04(trigger_pin=31, echo_pin=15)
+        sensor = HcSr04(trigger_pin=31, echo_pin=15)
         # Echo pin 一直是 LOW → while LOW loop 一直跑 → timeout
         # monotonic 呼叫順序：
         #   [1] deadline = monotonic() + ECHO_TIMEOUT_S  → 0.0
@@ -292,7 +292,7 @@ class TestHCSR04:
 
     def test_measure_distance_calculation(self) -> None:
         """_measure_distance() must compute distance using the speed-of-sound formula."""
-        sensor = HC_SR04(trigger_pin=31, echo_pin=15)
+        sensor = HcSr04(trigger_pin=31, echo_pin=15)
         echo_duration = 0.001  # 1 ms → 17.15 cm
         expected = echo_duration * SPEED_OF_SOUND_CM_PER_S / 2.0
 
@@ -329,7 +329,7 @@ class TestHCSR04:
 
     def test_confirmed_near_requires_majority_reads(self) -> None:
         """_confirmed_near() must return True only when ≥2 of 3 reads are within threshold."""
-        sensor = HC_SR04(trigger_pin=31, echo_pin=15, threshold_cm=60.0)
+        sensor = HcSr04(trigger_pin=31, echo_pin=15, threshold_cm=60.0)
         near = 30.0
         far = 100.0
         # 2 near, 1 far → majority → True
@@ -338,13 +338,13 @@ class TestHCSR04:
 
     def test_confirmed_near_false_when_minority_readings(self) -> None:
         """_confirmed_near() must return False when only 1 of 3 reads is near."""
-        sensor = HC_SR04(trigger_pin=31, echo_pin=15, threshold_cm=60.0)
+        sensor = HcSr04(trigger_pin=31, echo_pin=15, threshold_cm=60.0)
         with patch.object(sensor, "_measure_distance", side_effect=[30.0, 100.0, 100.0]):
             assert sensor._confirmed_near() is False
 
     def test_is_someone_near_delegates_to_confirmed_near(self) -> None:
         """is_someone_near() is the public API for _confirmed_near()."""
-        sensor = HC_SR04(trigger_pin=31, echo_pin=15)
+        sensor = HcSr04(trigger_pin=31, echo_pin=15)
         with patch.object(sensor, "_confirmed_near", return_value=True) as mock_cn:
             result = sensor.is_someone_near()
         mock_cn.assert_called_once()
@@ -352,7 +352,7 @@ class TestHCSR04:
 
     def test_wait_for_person_polls_until_near(self) -> None:
         """wait_for_person() must loop until _confirmed_near() returns True."""
-        sensor = HC_SR04(trigger_pin=31, echo_pin=15)
+        sensor = HcSr04(trigger_pin=31, echo_pin=15)
         # False twice, then True on third call
         with patch.object(sensor, "_confirmed_near", side_effect=[False, False, True]):
             with patch("time.sleep") as mock_sleep:
@@ -362,14 +362,14 @@ class TestHCSR04:
 
     def test_custom_threshold_passed_into_instance(self) -> None:
         """A non-default threshold_cm must be stored and honoured."""
-        sensor = HC_SR04(trigger_pin=31, echo_pin=15, threshold_cm=30.0)
+        sensor = HcSr04(trigger_pin=31, echo_pin=15, threshold_cm=30.0)
         assert sensor.threshold_cm == 30.0
         with patch.object(sensor, "_measure_distance", side_effect=[29.0, 29.0, 29.0]):
             assert sensor._confirmed_near() is True
 
     def test_cleanup_releases_both_pins(self) -> None:
         """cleanup() must call GPIO.cleanup with both trigger and echo pins."""
-        sensor = HC_SR04(trigger_pin=31, echo_pin=15)
+        sensor = HcSr04(trigger_pin=31, echo_pin=15)
         _gpio_mock.reset_mock()
         sensor.cleanup()
         _gpio_mock.cleanup.assert_called_once()
@@ -379,5 +379,5 @@ class TestHCSR04:
 
     def test_default_threshold_constant(self) -> None:
         """Default threshold_cm must equal the module-level APPROACH_THRESHOLD_CM."""
-        sensor = HC_SR04()
+        sensor = HcSr04()
         assert sensor.threshold_cm == APPROACH_THRESHOLD_CM
