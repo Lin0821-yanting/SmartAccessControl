@@ -10,7 +10,6 @@ YOLOv8n-face TensorRT FP16 推論器。
 """
 
 from dataclasses import dataclass, field
-from typing import List
 
 import cv2
 import numpy as np
@@ -20,6 +19,7 @@ from ultralytics import YOLO
 @dataclass
 class FaceDetection:
     """單一人臉偵測結果。"""
+
     bbox: np.ndarray        # [x1, y1, x2, y2] float32
     confidence: float       # 信心度 0~1
     keypoints: np.ndarray   # (5, 2) float32，順序：左眼、右眼、鼻子、嘴左、嘴右
@@ -47,7 +47,7 @@ class FaceDetector:
         self.model = YOLO(engine_path, task="pose")
         print(f"[FaceDetector] 載入 engine：{engine_path}")
 
-    def detect(self, frame: np.ndarray) -> List[FaceDetection]:
+    def detect(self, frame: np.ndarray) -> list[FaceDetection]:
         """
         對單張影像進行人臉偵測。
 

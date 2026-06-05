@@ -18,6 +18,9 @@ Usage:
 """
 
 import argparse
+
+# 加入專案根目錄至 path
+import sys
 import time
 from collections import deque
 from pathlib import Path
@@ -26,13 +29,11 @@ import cv2
 import numpy as np
 import yaml
 
-# 加入專案根目錄至 path
-import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from src.antispoof.antispoof import AntiSpoof
 from src.detection.detector import FaceDetector
 from src.recognition.recognizer import FaceRecognizer
-from src.antispoof.antispoof import AntiSpoof
 
 
 # ── Config ───────────────────────────────────────────────────────────────────
