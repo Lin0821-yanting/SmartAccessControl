@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 # GStreamer pipeline helper (same as M1's main.py for consistency)
 # ---------------------------------------------------------------------------
 
-def _gstreamer_pipeline(
+def _gstreamer_pipeline(  # pragma: no cover
     sensor_id: int = 0,
     width: int = 1920,
     height: int = 1080,
@@ -153,7 +153,7 @@ class Orchestrator:
     # ------------------------------------------------------------------
 
     @classmethod
-    def from_config(cls, config_path: str = "configs/config.yaml", display: bool = False) -> "Orchestrator":
+    def from_config(cls, config_path: str = "configs/config.yaml", display: bool = False) -> "Orchestrator":  # pragma: no cover
         """Construct a fully-wired Orchestrator from a YAML config file.
 
         Config keys used::
@@ -220,7 +220,7 @@ class Orchestrator:
     # Public entry point
     # ------------------------------------------------------------------
 
-    def run(self) -> None:
+    def run(self) -> None:  # pragma: no cover
         """Open camera, connect MQTT, and start the main pipeline loop.
 
         Press Q or Ctrl-C to exit cleanly.
@@ -500,7 +500,7 @@ def _read_ram_gb() -> float:
 # CLI entry point (convenience — main.py should normally be used)
 # ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     import argparse
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
