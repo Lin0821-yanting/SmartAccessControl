@@ -18,7 +18,7 @@ import pytest
 from src.led import GREEN_LED_HOLD_S, LED, RED_LED_HOLD_S  # noqa: E402
 from src.buzzer import BEEP_OFF_S, BEEP_ON_S, LONG_BEEP_S, Buzzer  # noqa: E402
 from src.servo import DUTY_LOCKED, DUTY_UNLOCKED, UNLOCK_HOLD_S, Servo  # noqa: E402
-from src.HcSr04 import (  # noqa: E402
+from src.hc_sr04 import (  # noqa: E402
     APPROACH_THRESHOLD_CM,
     HcSr04,
     POLL_INTERVAL_S,
