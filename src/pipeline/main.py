@@ -167,6 +167,15 @@ def run_pipeline(config: dict, display: bool = True) -> None:
         config:  config.yaml 內容
         display: 是否顯示即時畫面（headless 模式設為 False）
     """
+    #mqtt
+    from src.mqtt.publisher import AccessPublisher
+    publisher = AccessPublisher(
+        broker=config["mqtt"]["broker"],
+        port=config["mqtt"]["port"],
+        topics=config["mqtt"]["topics"],
+    )
+    publisher.start_heartbeat(fps_getter=lambda: fps if 'fps' in dir() else 0.0)
+
     cfg_models = config["models"]
     cfg_recog  = config["recognition"]
 
@@ -234,8 +243,16 @@ def run_pipeline(config: dict, display: bool = True) -> None:
                 # ── Act：授權觸發（Week 13 GPIO 整合） ───────────────────
                 if granted:
                     print(f"[ACCESS] 授權：{name}，門鎖開啟 3 秒")
+                    publisher.publish_event(name, recog.similarity, liveness.score, True, reason)
+                    publisher.publish_status("unlocked", name)
+                    # TODO: Member B — 呼叫 gpio.unlock()，觸發 servo 開門、綠燈亮、buzzer 嗶一聲
                     voter.reset()
-                    time.sleep(3)  # 冷卻 3 秒，模擬門鎖開關
+                    time.sleep(3)
+                    publisher.publish_status("locked")
+                    # TODO: Member B — 呼叫 gpio.lock()，servo 關門、綠燈滅
+                else:
+                    publisher.publish_event(name, recog.similarity, liveness.score, False, reason)
+                    # TODO: Member B — 若連續拒絕 N 次，呼叫 gpio.deny()，紅燈亮、buzzer 警告音
 
             # ── FPS 計算 ──────────────────────────────────────────────────
             now = time.time()
