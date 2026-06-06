@@ -177,12 +177,12 @@ def run_pipeline(config: dict, display: bool = True) -> None:
         input_size=cfg_models["yolo"]["input_size"],
     )
     recognizer = FaceRecognizer(
-        engine_path=cfg_models["mobilefacenet"]["engine"],
+        onnx_path=cfg_models["mobilefacenet"]["engine"],
         db_path=cfg_recog["db_path"],
         threshold=cfg_recog["similarity_threshold"],
     )
     antispoof  = AntiSpoof(
-        engine_path=cfg_models["minifasnet"]["engine"],
+        onnx_path=cfg_models["minifasnet"]["engine"],
     )
 
     voter = TemporalVoter(required_frames=cfg_recog["confirm_frames"])
@@ -233,7 +233,9 @@ def run_pipeline(config: dict, display: bool = True) -> None:
 
                 # ── Act：授權觸發（Week 13 GPIO 整合） ───────────────────
                 if granted:
-                    voter.reset()  # 重置，避免重複觸發
+                    print(f"[ACCESS] 授權：{name}，門鎖開啟 3 秒")
+                    voter.reset()
+                    time.sleep(3)  # 冷卻 3 秒，模擬門鎖開關
 
             # ── FPS 計算 ──────────────────────────────────────────────────
             now = time.time()
