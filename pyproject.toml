@@ -17,7 +17,6 @@ dependencies = [
     "ultralytics>=8.4.60",
     "gpiod>=2.4.2",
 ]
-dependencies = []
 requires-python = "==3.10.*"
 readme = "README.md"
 license = {text = "MIT"}
