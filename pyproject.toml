@@ -1,9 +1,21 @@
 [project]
 name = "SmartAccessControl"
 version = "0.1.0"
-description = "Default template for PDM package"
-authors = [
-    {name = "tsai", email = "henry1.tsai@gmail.com"},
+description = "Smart Laboratory Access Control System — Edge AI on Jetson Orin Nano"
+requires-python = "==3.10.*"
+dependencies = [
+    # MQTT publisher (Kit #1 → broker → subscriber dashboard)
+    "paho-mqtt>=2.0",
+    # Face embedding L2-norm, cosine similarity, frame buffers.
+    # Capped <2 because torch C extensions in the dustynv base image
+    # are compiled against numpy 1.x ABI; numpy 2 breaks torch at import.
+    "numpy>=1.26,<2",
+    # GPIO control for HC-SR04 / servo / LEDs / buzzer.
+    # Jetson.GPIO is a pure-Python wrapper that works on Orin Nano via
+    # the libgpiod backend — safe to install via pdm.
+    "Jetson.GPIO>=2.1",
+    "ultralytics>=8.4.60",
+    "gpiod>=2.4.2",
 ]
 dependencies = []
 requires-python = "==3.10.*"
