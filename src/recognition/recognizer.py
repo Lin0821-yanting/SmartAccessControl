@@ -26,7 +26,7 @@ class FaceRecognizer:
         self,
         onnx_path: str = "models/weights/MobileFaceNet.onnx",
         db_path: str   = "data/face_db.npy",
-        threshold: float = 0.85,
+        threshold: float = 0.9,
     ):
         self.threshold = threshold
         self.sess = ort.InferenceSession(

@@ -25,6 +25,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 import yaml
+import threading
 
 # 加入專案根目錄至 path
 import sys
@@ -245,11 +246,14 @@ def run_pipeline(config: dict, display: bool = True) -> None:
                     print(f"[ACCESS] 授權：{name}，門鎖開啟 3 秒")
                     publisher.publish_event(name, recog.similarity, liveness.score, True, reason)
                     publisher.publish_status("unlocked", name)
-                    # TODO: Member B — 呼叫 gpio.unlock()，觸發 servo 開門、綠燈亮、buzzer 嗶一聲
+                    # TODO: Member B — gpio.unlock()
                     voter.reset()
-                    time.sleep(3)
-                    publisher.publish_status("locked")
-                    # TODO: Member B — 呼叫 gpio.lock()，servo 關門、綠燈滅
+
+                    def _lock_after_delay():
+                        time.sleep(3)
+                        publisher.publish_status("locked")
+                        # TODO: Member B — gpio.lock()
+                    threading.Thread(target=_lock_after_delay, daemon=True).start()
                 else:
                     publisher.publish_event(name, recog.similarity, liveness.score, False, reason)
                     # TODO: Member B — 若連續拒絕 N 次，呼叫 gpio.deny()，紅燈亮、buzzer 警告音

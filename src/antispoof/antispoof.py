@@ -25,7 +25,7 @@ class AntiSpoof:
     def __init__(
         self,
         onnx_path: str   = "models/weights/minifasnet.onnx",
-        threshold: float = 0.6,
+        threshold: float = 0.9,
         input_size: int  = 128,
     ):
         self.threshold  = threshold
