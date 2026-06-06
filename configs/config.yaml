@@ -1,0 +1,38 @@
+# Copyright (c) 2026 GI104 henrytsai
+# Tatung University 14210 AI實務專題
+
+camera:
+  width: 1920
+  height: 1080
+  fps: 20
+  csi_port: 0
+
+models:
+  yolo:
+    engine: models/engines/yolov8n-face-fp16.engine
+    input_size: 416
+  mobilefacenet:
+    engine: models/weights/MobileFaceNet.onnx
+  minifasnet:
+    engine: models/weights/minifasnet.onnx
+
+recognition:
+  similarity_threshold: 0.75
+  confirm_frames: 2
+  db_path: data/face_db.npy
+
+gpio:
+  servo_pin: 33
+  green_led_pin: 7
+  red_led_pin: 11
+  buzzer_pin: 29
+  trig_pin: 31
+  echo_pin: 15
+
+mqtt:
+  broker: localhost
+  port: 1883
+  topics:
+    events: lab/access/events
+    status: lab/access/status
+    heartbeat: lab/access/heartbeat
