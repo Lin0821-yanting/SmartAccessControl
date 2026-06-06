@@ -40,6 +40,7 @@ dependencies = [
     # the libgpiod backend — safe to install via pdm.
     "Jetson.GPIO>=2.1",
     "ultralytics>=8.4.60",
+    "gpiod>=2.4.2",
 ]
 
 [tool.pdm]
