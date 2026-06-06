@@ -180,6 +180,10 @@ def run_pipeline(config: dict, display: bool = True) -> None:
     cfg_models = config["models"]
     cfg_recog  = config["recognition"]
 
+    #blink
+    from src.antispoof.blink import BlinkDetector
+    blink_detector = BlinkDetector(required_blinks=2, reset_timeout=10.0)
+
     # 載入三個模型
     detector   = FaceDetector(
         engine_path=cfg_models["yolo"]["engine"],
@@ -230,6 +234,12 @@ def run_pipeline(config: dict, display: bool = True) -> None:
                 liveness = antispoof.predict(face.crop)
 
                 # ── Decide：三條件判斷 ───────────────────────────────────
+                blink_result = blink_detector.update(frame)
+
+                if not blink_result.blink_confirmed:
+                    decisions.append((False, recog.name, f"請眨眼 ({blink_result.blink_count}/2)"))
+                    continue
+
                 granted, name, reason = make_decision(recog, liveness, voter)
                 decisions.append((granted, name, reason))
 
@@ -243,6 +253,7 @@ def run_pipeline(config: dict, display: bool = True) -> None:
 
                 # ── Act：授權觸發（Week 13 GPIO 整合） ───────────────────
                 if granted:
+                    blink_detector.reset()
                     print(f"[ACCESS] 授權：{name}，門鎖開啟 3 秒")
                     publisher.publish_event(name, recog.similarity, liveness.score, True, reason)
                     publisher.publish_status("unlocked", name)
