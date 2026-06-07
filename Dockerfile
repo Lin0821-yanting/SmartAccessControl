@@ -57,7 +57,7 @@ COPY configs/    ./configs/
 # ONNX weights are baked into the image so the container is self-contained.
 # TRT engines are NOT copied here — they are compiled by entrypoint.sh at
 # first startup and cached in a named volume (engine-cache).
-COPY models/weights/ ./models/weights/
+# COPY models/weights/ ./models/weights/
 
 # Enrollment face photos are NOT baked in; they are mounted as a volume at
 # runtime so new faces can be enrolled without rebuilding the image.
