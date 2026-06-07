@@ -194,6 +194,8 @@ class Orchestrator:
               broker_host: localhost
               broker_port: 1883
         """
+        import os
+
         with open(config_path) as f:
             cfg = yaml.safe_load(f)
 
@@ -220,8 +222,8 @@ class Orchestrator:
         )
         actuator  = ActuatorController()
         publisher = MqttPublisher(
-            broker_host=q.get("broker_host", "localhost"),
-            broker_port=q.get("broker_port", 1883),
+            broker_host=os.environ.get("MQTT_BROKER", q.get("broker_host", "localhost")),
+            broker_port=int(os.environ.get("MQTT_PORT", q.get("broker_port", 1883))),
         )
         sensor    = HCSR04()
 
@@ -396,12 +398,12 @@ class Orchestrator:
 
         elif decision == Decision.UNKNOWN:
             threading.Thread(
-                target=self._actuator.alert_unknown, daemon=True
+                target=self._actuator.alert_unknown, daemon=False
             ).start()
 
         elif decision == Decision.SPOOF:
             threading.Thread(
-                target=self._actuator.alert_spoof, daemon=True
+                target=self._actuator.alert_spoof, daemon=False
             ).start()
 
         # IGNORE → no actuator action
@@ -461,6 +463,7 @@ class Orchestrator:
                     pipeline_stage=self._get_stage(),
                     container_uptime_s=int(time.monotonic() - self._start_time),
                 )
+                Path("/tmp/healthz").write_text(str(time.time()))
             except Exception:
                 logger.exception("Heartbeat publish failed")
 

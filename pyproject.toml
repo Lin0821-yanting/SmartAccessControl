@@ -140,6 +140,16 @@ ci = {composite = ["check", "test-cov"]}
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra"
+# ---------------------------------------------------------------------------
+# Custom mark registration.
+# pytest requires all custom marks to be declared here; undeclared marks
+# produce PytestUnknownMarkWarning and fail under --strict-markers.
+# "hardware" is not a suppression — it is a test-selection label that
+# controls which tests run on the Jetson self-hosted runner vs. CI.
+# ---------------------------------------------------------------------------
+markers = [
+    "hardware: marks tests that require real Jetson GPIO hardware (deselect with '-m \"not hardware\"')",
+]
 
 [tool.coverage.run]
 source = ["src"]
