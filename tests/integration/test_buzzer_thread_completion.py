@@ -49,8 +49,8 @@ from unittest.mock import MagicMock, call, patch
 import numpy as np
 import pytest
 
-from src.actuator_controller import ActuatorController, _ALERT_BEEPS, _BEEP_ON_S
-from src.buzzer import Buzzer, BUZZER_PIN
+from src.actuator_controller import _ALERT_BEEPS, ActuatorController
+from src.buzzer import BUZZER_PIN, Buzzer
 from src.decision_engine import DecisionEngine
 from src.orchestrator import Orchestrator
 
@@ -69,12 +69,13 @@ from src.orchestrator import Orchestrator
 # 最後一次 GPIO.output 必須是 LOW。
 # ---------------------------------------------------------------------------
 
-_EXPECTED_OUTPUT_CALLS = _ALERT_BEEPS * 2   # 每聲：HIGH + LOW = 2 次
+_EXPECTED_OUTPUT_CALLS = _ALERT_BEEPS * 2  # 每聲：HIGH + LOW = 2 次
 
 
 # ---------------------------------------------------------------------------
 # 共用假資料（與 IT-1 保持相同命名慣例）
 # ---------------------------------------------------------------------------
+
 
 def _blank() -> np.ndarray:
     return np.zeros((480, 640, 3), dtype=np.uint8)
@@ -110,6 +111,7 @@ def _make_liveness(is_live: bool = True, score: float = 0.88) -> MagicMock:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def gpio_mock():
     """
@@ -125,7 +127,7 @@ def gpio_mock():
 
 
 @pytest.fixture()
-def real_buzzer(gpio_mock):  # noqa: ARG001 — gpio_mock 確保 GPIO mock 先初始化
+def real_buzzer(gpio_mock):
     """
     真實 Buzzer 實例。
 
@@ -154,6 +156,7 @@ def actuator(real_buzzer):
 # 輔助：從 gpio_mock.output.call_args_list 中篩出 BUZZER_PIN 的呼叫
 # ---------------------------------------------------------------------------
 
+
 def _buzzer_output_calls(gpio_mock) -> list:
     """
     過濾出所有對 BUZZER_PIN 的 GPIO.output() 呼叫。
@@ -163,10 +166,7 @@ def _buzzer_output_calls(gpio_mock) -> list:
         GPIO.output(BUZZER_PIN, LOW)
     LED 的 output 呼叫用不同的 pin，不會混入。
     """
-    return [
-        c for c in gpio_mock.output.call_args_list
-        if c.args and c.args[0] == BUZZER_PIN
-    ]
+    return [c for c in gpio_mock.output.call_args_list if c.args and c.args[0] == BUZZER_PIN]
 
 
 # ---------------------------------------------------------------------------
@@ -180,11 +180,12 @@ def _buzzer_output_calls(gpio_mock) -> list:
 # time.sleep 被 patch 掉，讓每個 GPIO 呼叫即時完成，不拖慢測試。
 # ---------------------------------------------------------------------------
 
+
 class TestAlertUnknownGpioSequence:
     """alert_unknown() 直接呼叫 → GPIO 電位序列正確。"""
 
     @pytest.fixture(autouse=True)
-    def _run_alert(self, actuator, gpio_mock):  # noqa: ARG002
+    def _run_alert(self, actuator, gpio_mock):
         """
         在每個測試前執行 alert_unknown()。
         patch("time.sleep") 同時抑制：
@@ -224,8 +225,12 @@ class TestAlertUnknownGpioSequence:
         """
         calls = _buzzer_output_calls(gpio_mock)
         for i in range(0, len(calls), 2):
-            assert calls[i].args[1] == gpio_mock.HIGH, f"第 {i//2+1} 聲 beep 的第一個呼叫應為 HIGH"
-            assert calls[i + 1].args[1] == gpio_mock.LOW, f"第 {i//2+1} 聲 beep 的第二個呼叫應為 LOW"
+            assert calls[i].args[1] == gpio_mock.HIGH, (
+                f"第 {i // 2 + 1} 聲 beep 的第一個呼叫應為 HIGH"
+            )
+            assert calls[i + 1].args[1] == gpio_mock.LOW, (
+                f"第 {i // 2 + 1} 聲 beep 的第二個呼叫應為 LOW"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -236,11 +241,12 @@ class TestAlertUnknownGpioSequence:
 # 獨立測試確保 SPOOF 分支也正確驅動真實 Buzzer。
 # ---------------------------------------------------------------------------
 
+
 class TestAlertSpoofGpioSequence:
     """alert_spoof() 直接呼叫 → GPIO 電位序列與 UNKNOWN 相同。"""
 
     @pytest.fixture(autouse=True)
-    def _run_alert(self, actuator, gpio_mock):  # noqa: ARG002
+    def _run_alert(self, actuator, gpio_mock):
         with patch("time.sleep"):
             actuator.alert_spoof()
 
@@ -269,6 +275,7 @@ class TestAlertSpoofGpioSequence:
 #   若 _multi_beep() 或 _beep() 裡的迴圈邏輯出錯導致無限等待，
 #   測試會在 2.5 s 後以 AssertionError 失敗而非永遠 hang。
 # ---------------------------------------------------------------------------
+
 
 class TestAlertCompletionTiming:
     """alert 方法必須在 2.5 秒內完成（真實 sleep，不 patch）。"""
@@ -309,8 +316,9 @@ class TestAlertCompletionTiming:
 #   等待 1.5 s，留有足夠餘量讓執行緒完成。
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
-def orc_with_real_buzzer(real_buzzer, gpio_mock):  # noqa: ARG001
+def orc_with_real_buzzer(real_buzzer, gpio_mock):
     """
     Orchestrator：
       - 真實 DecisionEngine（三幀累積邏輯）
@@ -336,7 +344,7 @@ def orc_with_real_buzzer(real_buzzer, gpio_mock):  # noqa: ARG001
 class TestOrchestratorDrivesRealBuzzer:
     """Orchestrator._tick() 分派 UNKNOWN → 真實 Buzzer 走完 GPIO 序列。"""
 
-    _THREAD_WAIT_S = 1.5   # 真實 0.90 s 序列 + 執行緒排程餘量
+    _THREAD_WAIT_S = 1.5  # 真實 0.90 s 序列 + 執行緒排程餘量
 
     def _tick_unknown(self, orc: Orchestrator) -> None:
         """送出一幀 UNKNOWN 條件（臉不在 DB）。"""
@@ -359,7 +367,7 @@ class TestOrchestratorDrivesRealBuzzer:
         確認執行緒正常完成後 GPIO pin 停在安全狀態。
         """
         self._tick_unknown(orc_with_real_buzzer)
-        time.sleep(self._THREAD_WAIT_S)   # 等 alert thread 完成
+        time.sleep(self._THREAD_WAIT_S)  # 等 alert thread 完成
 
         calls = _buzzer_output_calls(gpio_mock)
         assert len(calls) > 0, "alert_unknown() 執行緒未產生任何 GPIO.output 呼叫"

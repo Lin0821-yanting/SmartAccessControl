@@ -47,20 +47,20 @@ import numpy as np
 import pytest
 
 from src.actuator_controller import (
-    ActuatorController,
     _ALERT_BEEPS,
     _BEEP_ON_S,
     _DENY_LED_S,
     _GRANT_LED_S,
+    ActuatorController,
 )
-from src.decision_engine import Decision, DecisionEngine
+from src.decision_engine import DecisionEngine
 from src.orchestrator import Orchestrator
-
 
 # ---------------------------------------------------------------------------
 # 共用的假資料建構函式
 # （刻意與 test_orchestrator.py 保持相同命名，方便日後閱讀對照）
 # ---------------------------------------------------------------------------
+
 
 def _blank() -> np.ndarray:
     """空白 480×640 BGR 影像，供 _tick() 當作相機 frame 使用。"""
@@ -116,6 +116,7 @@ def _make_liveness(is_live: bool = True, score: float = 0.88) -> MagicMock:
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def hw() -> dict:
     """
@@ -125,9 +126,9 @@ def hw() -> dict:
     所以真實的 GPIO 程式碼不會被執行，測試可以在 x86 CI 上跑。
     """
     return {
-        "led":    MagicMock(),
+        "led": MagicMock(),
         "buzzer": MagicMock(),
-        "servo":  MagicMock(),
+        "servo": MagicMock(),
     }
 
 
@@ -151,9 +152,9 @@ def actuator(hw: dict) -> ActuatorController:
 def ai_mocks() -> dict:
     """AI pipeline 的三個 mock：detector、recognizer、antispoof。"""
     return {
-        "detector":   MagicMock(),
+        "detector": MagicMock(),
         "recognizer": MagicMock(),
-        "antispoof":  MagicMock(),
+        "antispoof": MagicMock(),
     }
 
 
@@ -180,6 +181,7 @@ def orc(engine: DecisionEngine, actuator: ActuatorController, ai_mocks: dict) ->
 # ---------------------------------------------------------------------------
 # 驅動 _tick() 的輔助函式
 # ---------------------------------------------------------------------------
+
 
 def _run_tick(
     orc: Orchestrator,
@@ -214,6 +216,7 @@ def _run_tick(
 # 對 servo 和 LED 的呼叫序列正確。
 # ---------------------------------------------------------------------------
 
+
 class TestGrantPath:
     """三幀累積 → GRANT → servo 解鎖 + 綠燈。"""
 
@@ -238,7 +241,9 @@ class TestGrantPath:
         hw["buzzer"]._beep.assert_not_called()
 
     def test_two_frames_do_not_trigger_grant(
-        self, engine: DecisionEngine, actuator: ActuatorController,
+        self,
+        engine: DecisionEngine,
+        actuator: ActuatorController,
         ai_mocks: dict,
     ) -> None:
         """
@@ -266,7 +271,7 @@ class TestGrantPath:
         )
         recog = _make_recog(similarity=0.92, authorized=True)
         liveness = _make_liveness(is_live=True)
-        for _ in range(2):   # 只送兩幀
+        for _ in range(2):  # 只送兩幀
             _run_tick(fresh_orc, ai_mocks, recog, liveness)
         time.sleep(0.1)
 
@@ -283,18 +288,19 @@ class TestGrantPath:
 # 驗證點：真實 deny_access() 只亮紅燈，不響 buzzer、不動 servo。
 # ---------------------------------------------------------------------------
 
+
 class TestDenyPath:
     """低相似度（臉在 DB 但不夠像） → DENY → 紅燈、靜音、servo 不動。"""
 
     @pytest.fixture(autouse=True)
     def _drive_deny(self, orc: Orchestrator, ai_mocks: dict) -> None:
         recog = _make_recog(
-            similarity=0.70,   # 低於門檻 0.85
-            authorized=True,   # face_in_db=True，所以不會觸發 UNKNOWN
+            similarity=0.70,  # 低於門檻 0.85
+            authorized=True,  # face_in_db=True，所以不會觸發 UNKNOWN
         )
         liveness = _make_liveness(is_live=True)
         _run_tick(orc, ai_mocks, recog, liveness)
-        time.sleep(0.1)        # deny_access() mock LED → instant，0.1 s 足夠
+        time.sleep(0.1)  # deny_access() mock LED → instant，0.1 s 足夠
 
     def test_red_led_is_called_with_correct_duration(self, hw: dict) -> None:
         hw["led"].indicate.assert_called_once_with(success=False, duration=_DENY_LED_S)
@@ -326,6 +332,7 @@ class TestDenyPath:
 #   _multi_beep(3) 內部有 2 × _BEEP_OFF_S（0.15 s）的真實 sleep，
 #   所以 thread 至少需要 0.30 s 才能完成。等 0.5 s 留有充裕餘量。
 # ---------------------------------------------------------------------------
+
 
 class TestUnknownPath:
     """臉不在 DB → UNKNOWN → 紅燈 + 三聲 buzzer。"""
@@ -369,6 +376,7 @@ class TestUnknownPath:
 #   但硬體行為相同。若把 SPOOF 分派到錯誤的 actuator 方法，MQTT 和硬體都會出錯。
 # ---------------------------------------------------------------------------
 
+
 class TestSpoofPath:
     """活體偵測失敗 → SPOOF → 紅燈 + 三聲 buzzer（硬體同 UNKNOWN，決策路徑不同）。"""
 
@@ -376,7 +384,7 @@ class TestSpoofPath:
     def _drive_spoof(self, orc: Orchestrator, ai_mocks: dict) -> None:
         recog = _make_recog(
             similarity=0.92,
-            authorized=True,   # 臉在 DB，但活體失敗，優先輸出 SPOOF
+            authorized=True,  # 臉在 DB，但活體失敗，優先輸出 SPOOF
         )
         liveness = _make_liveness(is_live=False, score=0.20)  # 活體失敗
         _run_tick(orc, ai_mocks, recog, liveness)
@@ -407,6 +415,7 @@ class TestSpoofPath:
 # Orchestrator._act(Decision.IGNORE) 必須完全靜默。
 # 若未來有人在 _act() 裡不小心為 IGNORE 加了 actuator 呼叫，這個測試會攔截。
 # ---------------------------------------------------------------------------
+
 
 class TestIgnorePath:
     """累積中的第一幀 → IGNORE → 所有 actuator 靜默。"""

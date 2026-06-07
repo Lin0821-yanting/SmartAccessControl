@@ -25,13 +25,12 @@ class FaceRecognizer:
     def __init__(
         self,
         onnx_path: str = "models/weights/MobileFaceNet.onnx",
-        db_path: str   = "data/face_db.npy",
+        db_path: str = "data/face_db.npy",
         threshold: float = 0.85,
     ):
         self.threshold = threshold
         self.sess = ort.InferenceSession(
-            onnx_path,
-            providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+            onnx_path, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
         )
         self._load_db(db_path)
         print(f"[FaceRecognizer] 載入 ONNX：{onnx_path}")
@@ -39,7 +38,7 @@ class FaceRecognizer:
 
     def _load_db(self, db_path: str) -> None:
         db = np.load(db_path, allow_pickle=True).item()
-        self.names: list            = db["names"]
+        self.names: list = db["names"]
         self.embeddings: np.ndarray = db["embeddings"]
 
     def reload_db(self, db_path: str) -> None:
@@ -55,10 +54,10 @@ class FaceRecognizer:
         return emb
 
     def match(self, face_crop: np.ndarray) -> RecognitionResult:
-        emb  = self.get_embedding(face_crop)
+        emb = self.get_embedding(face_crop)
         sims = self.embeddings @ emb
-        idx  = int(np.argmax(sims))
-        sim  = float(sims[idx])
+        idx = int(np.argmax(sims))
+        sim = float(sims[idx])
         if sim >= self.threshold:
             return RecognitionResult(name=self.names[idx], similarity=sim, authorized=True)
         return RecognitionResult(name="unknown", similarity=sim, authorized=False)
@@ -66,8 +65,9 @@ class FaceRecognizer:
 
 if __name__ == "__main__":
     import sys
+
     img_path = sys.argv[1] if len(sys.argv) > 1 else "data/enrollment/henry/0000.jpg"
-    r   = FaceRecognizer()
+    r = FaceRecognizer()
     img = cv2.imread(img_path)
     res = r.match(img)
     print(f"辨識：{res.name}  similarity={res.similarity:.4f}  authorized={res.authorized}")

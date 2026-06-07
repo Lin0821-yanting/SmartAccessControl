@@ -51,21 +51,20 @@ else:
     _gpiod_mock.LINE_REQ_DIR_IN = 2
 
 # Now safe to import the modules under test
-from src.led import GREEN_LED_HOLD_S, LED, RED_LED_HOLD_S  # noqa: E402
-from src.buzzer import BEEP_OFF_S, BEEP_ON_S, LONG_BEEP_S, Buzzer  # noqa: E402
-from src.servo import (  # noqa: E402
+from src.buzzer import BEEP_OFF_S, BEEP_ON_S, LONG_BEEP_S, Buzzer
+from src.hc_sr04 import (
+    APPROACH_THRESHOLD_CM,
+    POLL_INTERVAL_S,
+    SPEED_OF_SOUND_CM_PER_S,
+    HcSr04,
+)
+from src.led import GREEN_LED_HOLD_S, LED, RED_LED_HOLD_S
+from src.servo import (
     PULSE_LOCKED_MS,
     PULSE_UNLOCKED_MS,
     UNLOCK_HOLD_S,
     Servo,
 )
-from src.hc_sr04 import (  # noqa: E402
-    APPROACH_THRESHOLD_CM,
-    HcSr04,
-    POLL_INTERVAL_S,
-    SPEED_OF_SOUND_CM_PER_S,
-)
-
 
 # ===========================================================================
 # Helpers
@@ -129,10 +128,13 @@ class TestLED:
         assert high_call in output_calls
         assert low_call in output_calls
 
-    @pytest.mark.parametrize("success,expected_duration", [
-        (True, GREEN_LED_HOLD_S),
-        (False, RED_LED_HOLD_S),
-    ])
+    @pytest.mark.parametrize(
+        "success,expected_duration",
+        [
+            (True, GREEN_LED_HOLD_S),
+            (False, RED_LED_HOLD_S),
+        ],
+    )
     def test_indicate_default_duration(self, success: bool, expected_duration: float) -> None:
         """indicate() without explicit duration uses the module-level constant."""
         led = LED(green_pin=7, red_pin=11)
@@ -248,8 +250,10 @@ class TestServo:
         mock_chip.get_line.return_value = mock_line
         mock_pwm_instance = MagicMock()
 
-        with patch("src.servo.gpiod") as mock_gpiod_mod, \
-             patch("src.servo._SoftPWM", return_value=mock_pwm_instance):
+        with (
+            patch("src.servo.gpiod") as mock_gpiod_mod,
+            patch("src.servo._SoftPWM", return_value=mock_pwm_instance),
+        ):
             mock_gpiod_mod.Chip.return_value = mock_chip
             mock_gpiod_mod.LINE_REQ_DIR_OUT = 1
             self.mock_chip = mock_chip
@@ -372,25 +376,28 @@ class TestHCSR04:
         with patch("time.sleep"):
             sensor = HcSr04(trigger_pin=31, echo_pin=15)
 
-        echo_duration = 0.001   # 1 ms → 17.15 cm
+        echo_duration = 0.001  # 1 ms → 17.15 cm
         expected = echo_duration * SPEED_OF_SOUND_CM_PER_S / 2.0
         t_start = 0.1
         t_end = t_start + echo_duration  # 0.101
 
         _gpio_mock.input.side_effect = [
-            _gpio_mock.LOW,   # input[0]: stuck guard → not stuck
-            _gpio_mock.LOW,   # input[1]: while LOW → enters loop
+            _gpio_mock.LOW,  # input[0]: stuck guard → not stuck
+            _gpio_mock.LOW,  # input[1]: while LOW → enters loop
             _gpio_mock.HIGH,  # input[2]: while LOW → exits loop
             _gpio_mock.HIGH,  # input[3]: while HIGH → enters loop
-            _gpio_mock.LOW,   # input[4]: while HIGH → exits loop
+            _gpio_mock.LOW,  # input[4]: while HIGH → exits loop
         ]
-        with patch("time.monotonic", side_effect=[
-            0.0,      # [0] deadline = 0.0 + ECHO_TIMEOUT_S
-            0.0,      # [1] while LOW timeout check (not expired)
-            t_start,  # [2] t_start = 0.1
-            0.0,      # [3] while HIGH timeout check (not expired)
-            t_end,    # [4] final distance calculation
-        ]):
+        with patch(
+            "time.monotonic",
+            side_effect=[
+                0.0,  # [0] deadline = 0.0 + ECHO_TIMEOUT_S
+                0.0,  # [1] while LOW timeout check (not expired)
+                t_start,  # [2] t_start = 0.1
+                0.0,  # [3] while HIGH timeout check (not expired)
+                t_end,  # [4] final distance calculation
+            ],
+        ):
             dist = sensor._measure_distance()
 
         assert abs(dist - expected) < 0.01
@@ -401,7 +408,10 @@ class TestHCSR04:
             sensor = HcSr04(trigger_pin=31, echo_pin=15)
 
         # Patch GPIO.input to return HIGH (stuck), and mock _recover_stuck_echo
-        with patch.object(sensor, "_recover_stuck_echo", return_value=False) as mock_rec,              patch("src.hc_sr04.GPIO") as mock_gpio:
+        with (
+            patch.object(sensor, "_recover_stuck_echo", return_value=False) as mock_rec,
+            patch("src.hc_sr04.GPIO") as mock_gpio,
+        ):
             mock_gpio.HIGH = 1
             mock_gpio.LOW = 0
             mock_gpio.input.return_value = mock_gpio.HIGH  # ECHO stuck HIGH

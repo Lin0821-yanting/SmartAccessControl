@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 # GStreamer pipeline helper (same as M1's main.py for consistency)
 # ---------------------------------------------------------------------------
 
+
 def _gstreamer_pipeline(  # pragma: no cover
     sensor_id: int = 0,
     width: int = 1920,
@@ -69,10 +70,10 @@ def _gstreamer_pipeline(  # pragma: no cover
 # ---------------------------------------------------------------------------
 # Pipeline stage labels (used in heartbeat)
 # ---------------------------------------------------------------------------
-_STAGE_IDLE      = "IDLE"
+_STAGE_IDLE = "IDLE"
 _STAGE_DETECTING = "DETECTING"
-_STAGE_MATCHING  = "MATCHING"
-_STAGE_DECIDED   = "DECIDED"
+_STAGE_MATCHING = "MATCHING"
+_STAGE_DECIDED = "DECIDED"
 
 # HC-SR04 gate distance (cm) — persons closer than this trigger AI pipeline
 _GATE_DISTANCE_CM: float = 60.0
@@ -133,14 +134,14 @@ class Orchestrator:
             Whether to render an OpenCV preview window.
             Set ``False`` for headless / Docker deployment.
         """
-        self._detector   = detector
+        self._detector = detector
         self._recognizer = recognizer
-        self._antispoof  = antispoof
-        self._engine     = engine
-        self._actuator   = actuator
-        self._publisher  = publisher
-        self._sensor     = sensor
-        self._display    = display
+        self._antispoof = antispoof
+        self._engine = engine
+        self._actuator = actuator
+        self._publisher = publisher
+        self._sensor = sensor
+        self._display = display
 
         # Door state tracked here so publish_status fires only on change
         self._door_state: str = "locked"
@@ -203,7 +204,7 @@ class Orchestrator:
         r = cfg["recognition"]
         q = cfg.get("mqtt", {})
 
-        detector   = FaceDetector(
+        detector = FaceDetector(
             engine_path=m["yolo"]["engine"],
             input_size=m["yolo"].get("input_size", 416),
         )
@@ -212,20 +213,20 @@ class Orchestrator:
             db_path=r["db_path"],
             threshold=r["similarity_threshold"],
         )
-        antispoof  = AntiSpoof(
+        antispoof = AntiSpoof(
             onnx_path=m["minifasnet"]["engine"],
             threshold=LIVENESS_THRESHOLD,
         )
-        engine    = DecisionEngine(
+        engine = DecisionEngine(
             similarity_threshold=r["similarity_threshold"],
             required_frames=r["confirm_frames"],
         )
-        actuator  = ActuatorController()
+        actuator = ActuatorController()
         publisher = MqttPublisher(
             broker_host=os.environ.get("MQTT_BROKER", q.get("broker_host", "localhost")),
             broker_port=int(os.environ.get("MQTT_PORT", q.get("broker_port", 1883))),
         )
-        sensor    = HCSR04()
+        sensor = HCSR04()
 
         return cls(
             detector=detector,
@@ -297,10 +298,7 @@ class Orchestrator:
         """Process a single camera frame end-to-end."""
         # ── Sense: HC-SR04 gate ──────────────────────────────────────────
         self._distance_cm = self._sensor._measure_distance()
-        gate_open = (
-            self._distance_cm != float("inf")
-            and self._distance_cm < _GATE_DISTANCE_CM
-        )
+        gate_open = self._distance_cm != float("inf") and self._distance_cm < _GATE_DISTANCE_CM
 
         # Skip AI pipeline if gate closed or still in cooldown
         if not gate_open or time.monotonic() < self._grant_until:
@@ -330,7 +328,7 @@ class Orchestrator:
 
         # Process the highest-confidence face only
         face = faces[0]
-        bbox = face.bbox.astype(int).tolist()   # [x1, y1, x2, y2]
+        bbox = face.bbox.astype(int).tolist()  # [x1, y1, x2, y2]
 
         # ── Process: Stage 2 & 3 — recognition + anti-spoof ─────────────
         self._set_stage(_STAGE_MATCHING)
@@ -338,7 +336,7 @@ class Orchestrator:
         liveness: LivenessResult = self._antispoof.predict(face.crop)
 
         anti_spoof_pass = liveness.is_live
-        face_in_db      = recog.authorized        # True when sim >= threshold
+        face_in_db = recog.authorized  # True when sim >= threshold
 
         # ── Decide: DecisionEngine ───────────────────────────────────────
         self._set_stage(_STAGE_DECIDED)
@@ -351,8 +349,11 @@ class Orchestrator:
         # ── Log ──────────────────────────────────────────────────────────
         logger.info(
             "DECISION=%s  identity=%s  sim=%.3f  live=%.3f  frames=%d",
-            decision.name, recog.name, recog.similarity,
-            liveness.score, self._engine.consecutive_frames,
+            decision.name,
+            recog.name,
+            recog.similarity,
+            liveness.score,
+            self._engine.consecutive_frames,
         )
 
         # ── Publish: lab/access/events ───────────────────────────────────
@@ -379,9 +380,7 @@ class Orchestrator:
         if decision == Decision.GRANT:
             self._grant_until = time.monotonic() + _GRANT_COOLDOWN_S
             # Actuator: servo unlock + green LED (non-blocking internally)
-            threading.Thread(
-                target=self._actuator.grant_access, daemon=True
-            ).start()
+            threading.Thread(target=self._actuator.grant_access, daemon=True).start()
             # Status: unlocked
             self._set_door_state("unlocked", identity)
             # Schedule auto-relock status publish after servo returns
@@ -392,26 +391,20 @@ class Orchestrator:
             ).start()
 
         elif decision == Decision.DENY:
-            threading.Thread(
-                target=self._actuator.deny_access, daemon=True
-            ).start()
+            threading.Thread(target=self._actuator.deny_access, daemon=True).start()
 
         elif decision == Decision.UNKNOWN:
-            threading.Thread(
-                target=self._actuator.alert_unknown, daemon=False
-            ).start()
+            threading.Thread(target=self._actuator.alert_unknown, daemon=False).start()
 
         elif decision == Decision.SPOOF:
-            threading.Thread(
-                target=self._actuator.alert_spoof, daemon=False
-            ).start()
+            threading.Thread(target=self._actuator.alert_spoof, daemon=False).start()
 
         # IGNORE → no actuator action
 
     def _set_door_state(self, state: str, person: str) -> None:
         """Update tracked door state and publish only if it changed."""
         if state != self._door_state:
-            self._door_state  = state
+            self._door_state = state
             self._last_person = person
             self._publisher.publish_status(
                 door_state=state,
@@ -497,6 +490,7 @@ class Orchestrator:
 # System metric helpers
 # ---------------------------------------------------------------------------
 
+
 def _read_cpu_temp() -> float:
     """Read CPU temperature from sysfs (°C). Returns -1 on failure."""
     path = "/sys/class/thermal/thermal_zone0/temp"
@@ -515,7 +509,7 @@ def _read_ram_gb() -> float:
             meminfo[key.strip()] = int(val.split()[0])
         total = meminfo.get("MemTotal", 0)
         avail = meminfo.get("MemAvailable", 0)
-        return round((total - avail) / (1024 ** 2), 3)
+        return round((total - avail) / (1024**2), 3)
     except (OSError, ValueError, KeyError):
         return -1.0
 

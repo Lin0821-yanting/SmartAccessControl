@@ -51,7 +51,7 @@ CI 相容性
 from __future__ import annotations
 
 import sys
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -59,16 +59,16 @@ from src.actuator_controller import ActuatorController
 from src.buzzer import BUZZER_PIN, Buzzer
 from src.led import GREEN_LED_PIN, LED, RED_LED_PIN
 
-
 # ---------------------------------------------------------------------------
 # GPIO pin 常數（方便斷言）
 # ---------------------------------------------------------------------------
-_ALL_OUTPUT_PINS = (GREEN_LED_PIN, RED_LED_PIN, BUZZER_PIN)   # 7, 11, 29
+_ALL_OUTPUT_PINS = (GREEN_LED_PIN, RED_LED_PIN, BUZZER_PIN)  # 7, 11, 29
 
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def gpio_mock():
@@ -94,7 +94,7 @@ def led(gpio_mock):
     讓後續的測試只看到 cleanup() 相關的 GPIO 呼叫。
     """
     instance = LED()
-    gpio_mock.output.reset_mock()   # 清除 __init__ 可能產生的呼叫
+    gpio_mock.output.reset_mock()  # 清除 __init__ 可能產生的呼叫
     return instance
 
 
@@ -128,10 +128,12 @@ def actuator(led: LED, buzzer: Buzzer, gpio_mock) -> ActuatorController:
 # 輔助：從 GPIO.output 呼叫記錄中篩出指定 pin 被設為 LOW 的次數
 # ---------------------------------------------------------------------------
 
+
 def _low_calls_for_pin(gpio_mock, pin: int) -> list:
     """回傳所有 ``GPIO.output(pin, LOW)`` 的呼叫記錄。"""
     return [
-        c for c in gpio_mock.output.call_args_list
+        c
+        for c in gpio_mock.output.call_args_list
         if c.args and c.args[0] == pin and c.args[1] == gpio_mock.LOW
     ]
 
@@ -153,6 +155,7 @@ def _pin_ends_low(gpio_mock, pin: int) -> bool:
 #   2. 沒有明確測「最後一次 GPIO.output 是 LOW」這個格式（只測 call_count）。
 # IT-5-A 確認 LED.cleanup() 直接呼叫時，green_pin 和 red_pin 都拿到 LOW。
 # ---------------------------------------------------------------------------
+
 
 class TestLedCleanupGpio:
     """LED.cleanup() 後，green_pin 和 red_pin 的 GPIO.output 最後是 LOW。"""
@@ -176,9 +179,7 @@ class TestLedCleanupGpio:
             f"cleanup() 後 GPIO pin {RED_LED_PIN}（red LED）應為 LOW"
         )
 
-    def test_cleanup_calls_gpio_cleanup_for_both_pins(
-        self, led: LED, gpio_mock
-    ) -> None:
+    def test_cleanup_calls_gpio_cleanup_for_both_pins(self, led: LED, gpio_mock) -> None:
         """
         LED.cleanup() 必須呼叫 GPIO.cleanup([green_pin, red_pin]) 釋放資源。
 
@@ -191,7 +192,9 @@ class TestLedCleanupGpio:
             c.args[0] if c.args else c.kwargs.get("channel_list")
             for c in gpio_mock.cleanup.call_args_list
         ]
-        all_cleaned = [pin for arg in cleanup_args for pin in (arg if isinstance(arg, list) else [arg])]
+        all_cleaned = [
+            pin for arg in cleanup_args for pin in (arg if isinstance(arg, list) else [arg])
+        ]
         assert GREEN_LED_PIN in all_cleaned, f"GPIO.cleanup 未包含 green_pin ({GREEN_LED_PIN})"
         assert RED_LED_PIN in all_cleaned, f"GPIO.cleanup 未包含 red_pin ({RED_LED_PIN})"
 
@@ -204,12 +207,11 @@ class TestLedCleanupGpio:
 # IT-5-B 在相同的 gpio_mock 共享環境下驗證 Buzzer 的 cleanup 行為。
 # ---------------------------------------------------------------------------
 
+
 class TestBuzzerCleanupGpio:
     """Buzzer.cleanup() 後，buzzer_pin 的 GPIO.output 最後是 LOW。"""
 
-    def test_cleanup_drives_buzzer_pin_low(
-        self, buzzer: Buzzer, gpio_mock
-    ) -> None:
+    def test_cleanup_drives_buzzer_pin_low(self, buzzer: Buzzer, gpio_mock) -> None:
         """
         Buzzer.cleanup() 必須呼叫 GPIO.output(BUZZER_PIN, LOW)。
 
@@ -221,16 +223,16 @@ class TestBuzzerCleanupGpio:
             f"cleanup() 後 GPIO pin {BUZZER_PIN}（buzzer）應為 LOW"
         )
 
-    def test_cleanup_calls_gpio_cleanup_for_buzzer_pin(
-        self, buzzer: Buzzer, gpio_mock
-    ) -> None:
+    def test_cleanup_calls_gpio_cleanup_for_buzzer_pin(self, buzzer: Buzzer, gpio_mock) -> None:
         """Buzzer.cleanup() 必須呼叫 GPIO.cleanup([BUZZER_PIN]) 釋放資源。"""
         buzzer.cleanup()
         cleanup_args = [
             c.args[0] if c.args else c.kwargs.get("channel_list")
             for c in gpio_mock.cleanup.call_args_list
         ]
-        all_cleaned = [pin for arg in cleanup_args for pin in (arg if isinstance(arg, list) else [arg])]
+        all_cleaned = [
+            pin for arg in cleanup_args for pin in (arg if isinstance(arg, list) else [arg])
+        ]
         assert BUZZER_PIN in all_cleaned, f"GPIO.cleanup 未包含 BUZZER_PIN ({BUZZER_PIN})"
 
 
@@ -246,6 +248,7 @@ class TestBuzzerCleanupGpio:
 #   但 mock 的 cleanup() 不執行任何 GPIO 呼叫。
 #   IT-5-C 讓真實的 LED 和 Buzzer 參與，確認 GPIO 電位在 cleanup 後確實為 LOW。
 # ---------------------------------------------------------------------------
+
 
 class TestActuatorCleanupChain:
     """actuator.cleanup() → 三個 output pin 全部被拉到 LOW。"""
@@ -263,23 +266,15 @@ class TestActuatorCleanupChain:
             "actuator.cleanup() 後 green LED pin 應為 LOW"
         )
 
-    def test_cleanup_drives_red_led_pin_low(
-        self, actuator: ActuatorController, gpio_mock
-    ) -> None:
+    def test_cleanup_drives_red_led_pin_low(self, actuator: ActuatorController, gpio_mock) -> None:
         """actuator.cleanup() → led.cleanup() → GPIO.output(red_pin, LOW)。"""
         actuator.cleanup()
-        assert _pin_ends_low(gpio_mock, RED_LED_PIN), (
-            "actuator.cleanup() 後 red LED pin 應為 LOW"
-        )
+        assert _pin_ends_low(gpio_mock, RED_LED_PIN), "actuator.cleanup() 後 red LED pin 應為 LOW"
 
-    def test_cleanup_drives_buzzer_pin_low(
-        self, actuator: ActuatorController, gpio_mock
-    ) -> None:
+    def test_cleanup_drives_buzzer_pin_low(self, actuator: ActuatorController, gpio_mock) -> None:
         """actuator.cleanup() → buzzer.cleanup() → GPIO.output(BUZZER_PIN, LOW)。"""
         actuator.cleanup()
-        assert _pin_ends_low(gpio_mock, BUZZER_PIN), (
-            "actuator.cleanup() 後 buzzer pin 應為 LOW"
-        )
+        assert _pin_ends_low(gpio_mock, BUZZER_PIN), "actuator.cleanup() 後 buzzer pin 應為 LOW"
 
     def test_cleanup_after_alert_does_not_raise(
         self, actuator: ActuatorController, gpio_mock
@@ -302,9 +297,7 @@ class TestActuatorCleanupChain:
         # cleanup 後 buzzer pin 仍必須是 LOW
         assert _pin_ends_low(gpio_mock, BUZZER_PIN)
 
-    def test_cleanup_is_idempotent(
-        self, actuator: ActuatorController, gpio_mock
-    ) -> None:
+    def test_cleanup_is_idempotent(self, actuator: ActuatorController, gpio_mock) -> None:
         """
         連續呼叫 cleanup() 兩次不拋例外（冪等性）。
 
@@ -313,7 +306,7 @@ class TestActuatorCleanupChain:
         Jetson runner 上的 @pytest.mark.hardware 版本才會測真實 GPIO 的行為。
         """
         actuator.cleanup()
-        actuator.cleanup()   # 第二次呼叫不應拋 RuntimeError / ValueError
+        actuator.cleanup()  # 第二次呼叫不應拋 RuntimeError / ValueError
 
 
 # ---------------------------------------------------------------------------
@@ -322,6 +315,7 @@ class TestActuatorCleanupChain:
 # 一個測試同時確認三個 pin 都被 cleanup，
 # 讓 CI log 裡有一行清楚的「全部 pin 已保護」確認。
 # ---------------------------------------------------------------------------
+
 
 class TestAllPinsProtectedAfterCleanup:
     """actuator.cleanup() 後，所有 output pin 都在 LOW 狀態。"""
@@ -340,10 +334,7 @@ class TestAllPinsProtectedAfterCleanup:
         """
         actuator.cleanup()
 
-        failed_pins = [
-            pin for pin in _ALL_OUTPUT_PINS
-            if not _pin_ends_low(gpio_mock, pin)
-        ]
+        failed_pins = [pin for pin in _ALL_OUTPUT_PINS if not _pin_ends_low(gpio_mock, pin)]
         assert not failed_pins, (
             f"cleanup() 後以下 GPIO pin 未回到 LOW：{failed_pins}\n"
             f"GPIO.output 呼叫記錄：{gpio_mock.output.call_args_list}"

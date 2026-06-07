@@ -10,19 +10,19 @@ from unittest.mock import MagicMock, call
 import pytest
 
 from src.actuator_controller import (
-    ActuatorController,
     _ALERT_BEEPS,
     _BEEP_ON_S,
     _DENY_LED_S,
     _GRANT_LED_S,
+    ActuatorController,
 )
 
 
 @pytest.fixture()
 def mocks():
-    mock_led    = MagicMock()
+    mock_led = MagicMock()
     mock_buzzer = MagicMock()
-    mock_servo  = MagicMock()
+    mock_servo = MagicMock()
     ctrl = ActuatorController(led=mock_led, buzzer=mock_buzzer, servo=mock_servo)
     return mock_led, mock_buzzer, mock_servo, ctrl
 

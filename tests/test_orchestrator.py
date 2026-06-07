@@ -15,19 +15,18 @@ from __future__ import annotations
 
 import threading
 import time
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 
 from src.decision_engine import Decision, DecisionEngine
-from src.mqtt_publisher import TOPIC_EVENTS, TOPIC_STATUS
 from src.orchestrator import Orchestrator, _read_cpu_temp, _read_ram_gb
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_face(bbox=(10, 20, 110, 120), conf=0.95):
     face = MagicMock()
@@ -56,16 +55,17 @@ def _make_liveness(is_live=True, score=0.88):
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def mocks():
     """All injected mock objects."""
     return {
-        "detector":   MagicMock(),
+        "detector": MagicMock(),
         "recognizer": MagicMock(),
-        "antispoof":  MagicMock(),
-        "actuator":   MagicMock(),
-        "publisher":  MagicMock(),
-        "sensor":     MagicMock(),
+        "antispoof": MagicMock(),
+        "actuator": MagicMock(),
+        "publisher": MagicMock(),
+        "sensor": MagicMock(),
     }
 
 
@@ -96,6 +96,7 @@ def _blank():
 # __init__ state
 # ---------------------------------------------------------------------------
 
+
 class TestInit:
     def test_initial_door_state_is_locked(self, orc):
         assert orc._door_state == "locked"
@@ -114,9 +115,10 @@ class TestInit:
 # _tick — gate path
 # ---------------------------------------------------------------------------
 
+
 class TestTickGate:
     def test_gate_closed_timeout_skips_pipeline(self, orc, mocks):
-        """inf distance (timeout) must skip AI pipeline."""
+        """Inf distance (timeout) must skip AI pipeline."""
         with patch.object(orc._sensor, "_measure_distance", return_value=float("inf")):
             orc._tick(_blank())
         mocks["detector"].detect.assert_not_called()
@@ -146,6 +148,7 @@ class TestTickGate:
 # _tick — no-face path
 # ---------------------------------------------------------------------------
 
+
 class TestTickNoFace:
     def _tick_open(self, orc, mocks):
         mocks["detector"].detect.return_value = []
@@ -173,6 +176,7 @@ class TestTickNoFace:
 # _tick — GRANT path (3 consecutive frames)
 # ---------------------------------------------------------------------------
 
+
 class TestTickGrant:
     def _tick_matching(self, orc, mocks, recog=None, liveness=None):
         mocks["detector"].detect.return_value = [_make_face()]
@@ -198,7 +202,8 @@ class TestTickGrant:
             self._tick_matching(orc, mocks)
         time.sleep(0.05)
         unlocked = [
-            c for c in mocks["publisher"].publish_status.call_args_list
+            c
+            for c in mocks["publisher"].publish_status.call_args_list
             if c.kwargs.get("door_state") == "unlocked"
         ]
         assert len(unlocked) >= 1
@@ -212,6 +217,7 @@ class TestTickGrant:
 # ---------------------------------------------------------------------------
 # _tick — DENY path
 # ---------------------------------------------------------------------------
+
 
 class TestTickDeny:
     def test_deny_calls_deny_access(self, orc, mocks):
@@ -231,6 +237,7 @@ class TestTickDeny:
 # _tick — UNKNOWN path
 # ---------------------------------------------------------------------------
 
+
 class TestTickUnknown:
     def test_unknown_calls_alert_unknown(self, orc, mocks):
         mocks["detector"].detect.return_value = [_make_face()]
@@ -248,6 +255,7 @@ class TestTickUnknown:
 # ---------------------------------------------------------------------------
 # _tick — SPOOF path
 # ---------------------------------------------------------------------------
+
 
 class TestTickSpoof:
     def test_spoof_calls_alert_spoof(self, orc, mocks):
@@ -275,6 +283,7 @@ class TestTickSpoof:
 # _tick — IGNORE (accumulating)
 # ---------------------------------------------------------------------------
 
+
 class TestTickIgnoreAccumulating:
     def test_accumulating_frame_fires_no_actuator(self, orc, mocks):
         mocks["detector"].detect.return_value = [_make_face()]
@@ -292,6 +301,7 @@ class TestTickIgnoreAccumulating:
 # ---------------------------------------------------------------------------
 # _act — each decision
 # ---------------------------------------------------------------------------
+
 
 class TestAct:
     def test_act_grant_calls_grant_access(self, orc, mocks):
@@ -327,6 +337,7 @@ class TestAct:
 # _set_door_state
 # ---------------------------------------------------------------------------
 
+
 class TestSetDoorState:
     def test_state_change_triggers_publish(self, orc, mocks):
         orc._door_state = "locked"
@@ -354,6 +365,7 @@ class TestSetDoorState:
 # _update_fps
 # ---------------------------------------------------------------------------
 
+
 class TestUpdateFps:
     def test_fps_not_flushed_within_window(self, orc):
         orc._fps_window_start = time.monotonic()
@@ -376,6 +388,7 @@ class TestUpdateFps:
 # _set_stage / _get_stage
 # ---------------------------------------------------------------------------
 
+
 class TestStage:
     def test_set_and_get_stage_roundtrip(self, orc):
         orc._set_stage("MATCHING")
@@ -393,8 +406,10 @@ class TestStage:
             orc._set_stage(stage)
             results.append(orc._get_stage())
 
-        threads = [threading.Thread(target=writer, args=(s,))
-                   for s in ("IDLE", "DETECTING", "MATCHING", "DECIDED") * 5]
+        threads = [
+            threading.Thread(target=writer, args=(s,))
+            for s in ("IDLE", "DETECTING", "MATCHING", "DECIDED") * 5
+        ]
         for t in threads:
             t.start()
         for t in threads:
@@ -407,6 +422,7 @@ class TestStage:
 # _heartbeat_loop
 # ---------------------------------------------------------------------------
 
+
 class TestHeartbeatLoop:
     def test_heartbeat_calls_publish_heartbeat(self, orc, mocks):
         call_count = []
@@ -416,9 +432,11 @@ class TestHeartbeatLoop:
                 raise SystemExit
             call_count.append(1)
 
-        with patch("src.orchestrator.time.sleep", side_effect=fake_sleep), \
-             patch("src.orchestrator._read_cpu_temp", return_value=55.0), \
-             patch("src.orchestrator._read_ram_gb", return_value=2.5):
+        with (
+            patch("src.orchestrator.time.sleep", side_effect=fake_sleep),
+            patch("src.orchestrator._read_cpu_temp", return_value=55.0),
+            patch("src.orchestrator._read_ram_gb", return_value=2.5),
+        ):
             try:
                 orc._heartbeat_loop()
             except SystemExit:
@@ -447,6 +465,7 @@ class TestHeartbeatLoop:
 # _read_cpu_temp / _read_ram_gb
 # ---------------------------------------------------------------------------
 
+
 class TestSystemMetrics:
     def test_read_cpu_temp_happy_path(self, tmp_path):
         fake = tmp_path / "temp"
@@ -464,9 +483,7 @@ class TestSystemMetrics:
     def test_read_ram_gb_happy_path(self, tmp_path):
         fake = tmp_path / "meminfo"
         fake.write_text(
-            "MemTotal:       8388608 kB\n"
-            "MemFree:        2097152 kB\n"
-            "MemAvailable:   4194304 kB\n"
+            "MemTotal:       8388608 kB\nMemFree:        2097152 kB\nMemAvailable:   4194304 kB\n"
         )
         with patch("src.orchestrator.Path", return_value=fake):
             result = _read_ram_gb()

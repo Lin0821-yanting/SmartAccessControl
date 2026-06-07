@@ -51,14 +51,12 @@ import threading
 import time
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from src.actuator_controller import ActuatorController
-
 
 # ---------------------------------------------------------------------------
 # Fixture：帶有受控延遲的 ActuatorController
 # ---------------------------------------------------------------------------
+
 
 def _make_tracked_actuator(delay: float = 0.05) -> tuple[ActuatorController, list, threading.Event]:
     """
@@ -73,10 +71,10 @@ def _make_tracked_actuator(delay: float = 0.05) -> tuple[ActuatorController, lis
     call_log: list[str] = []
     entered_event = threading.Event()
 
-    def tracked_led(success: bool, duration: float | None = None) -> None:  # noqa: ANN001
+    def tracked_led(success: bool, duration: float | None = None) -> None:
         call_log.append("START")
-        entered_event.set()      # 通知：第一個方法已進入且持有 _lock
-        time.sleep(delay)        # 模擬硬體佔用時間
+        entered_event.set()  # 通知：第一個方法已進入且持有 _lock
+        time.sleep(delay)  # 模擬硬體佔用時間
         call_log.append("END")
 
     mock_led = MagicMock()
@@ -97,6 +95,7 @@ def _make_tracked_actuator(delay: float = 0.05) -> tuple[ActuatorController, lis
 # orchestrator 連發兩個 daemon thread 各呼叫一次 deny_access()。
 # ---------------------------------------------------------------------------
 
+
 class TestSameMethodConcurrency:
     """兩個並發的相同 actuator 方法必須序列化執行。"""
 
@@ -114,8 +113,8 @@ class TestSameMethodConcurrency:
         t2 = threading.Thread(target=actuator.deny_access, name="t2")
 
         t1.start()
-        entered.wait()   # t1 已持有 _lock 並進入 indicate()
-        t2.start()       # t2 嘗試取得 _lock，應被阻擋
+        entered.wait()  # t1 已持有 _lock 並進入 indicate()
+        t2.start()  # t2 嘗試取得 _lock，應被阻擋
 
         t1.join(timeout=1.0)
         t2.join(timeout=1.0)
@@ -130,7 +129,7 @@ class TestSameMethodConcurrency:
         """
         actuator, call_log, entered = _make_tracked_actuator(delay=0.05)
 
-        with patch("time.sleep"):   # 抑制 _multi_beep 的 inter-beep sleep
+        with patch("time.sleep"):  # 抑制 _multi_beep 的 inter-beep sleep
             t1 = threading.Thread(target=actuator.alert_unknown, name="t1")
             t2 = threading.Thread(target=actuator.alert_unknown, name="t2")
 
@@ -154,6 +153,7 @@ class TestSameMethodConcurrency:
 # 若沒有 _lock，DENY 的紅燈會在 GRANT 的綠燈還亮著時就啟動。
 # ---------------------------------------------------------------------------
 
+
 class TestDifferentMethodConcurrency:
     """GRANT 執行中，並發的 DENY 必須等 GRANT 完成後才開始。"""
 
@@ -170,8 +170,8 @@ class TestDifferentMethodConcurrency:
         t2 = threading.Thread(target=actuator.deny_access, name="deny")
 
         t1.start()
-        entered.wait()   # grant 已持有 _lock
-        t2.start()       # deny 嘗試取得 _lock，應被阻擋
+        entered.wait()  # grant 已持有 _lock
+        t2.start()  # deny 嘗試取得 _lock，應被阻擋
 
         t1.join(timeout=1.0)
         t2.join(timeout=1.0)
@@ -210,6 +210,7 @@ class TestDifferentMethodConcurrency:
 # 不會出現「第一個執行到一半被跳過」的情況。
 # ---------------------------------------------------------------------------
 
+
 class TestNoDroppedOperations:
     """並發呼叫都必須完整執行，不能因鎖競爭而被略過。"""
 
@@ -221,7 +222,7 @@ class TestNoDroppedOperations:
         call_log: list[str] = []
         lock = threading.Lock()
 
-        def tracked_led(success: bool, duration: float | None = None) -> None:  # noqa: ANN001
+        def tracked_led(success: bool, duration: float | None = None) -> None:
             with lock:
                 call_log.append("START")
             time.sleep(0.02)
@@ -231,26 +232,17 @@ class TestNoDroppedOperations:
         mock_led = MagicMock()
         mock_led.indicate.side_effect = tracked_led
 
-        actuator = ActuatorController(
-            led=mock_led, buzzer=MagicMock(), servo=MagicMock()
-        )
+        actuator = ActuatorController(led=mock_led, buzzer=MagicMock(), servo=MagicMock())
 
         _N = 5
-        threads = [
-            threading.Thread(target=actuator.deny_access)
-            for _ in range(_N)
-        ]
+        threads = [threading.Thread(target=actuator.deny_access) for _ in range(_N)]
         for t in threads:
             t.start()
         for t in threads:
             t.join(timeout=2.0)
 
-        assert call_log.count("START") == _N, (
-            f"預期 {_N} 次 START，實際 {call_log.count('START')}"
-        )
-        assert call_log.count("END") == _N, (
-            f"預期 {_N} 次 END，實際 {call_log.count('END')}"
-        )
+        assert call_log.count("START") == _N, f"預期 {_N} 次 START，實際 {call_log.count('START')}"
+        assert call_log.count("END") == _N, f"預期 {_N} 次 END，實際 {call_log.count('END')}"
         # 序列化：START 和 END 必須交替出現，不能有連續兩個 START
         for i in range(0, len(call_log) - 1, 2):
             assert call_log[i] == "START" and call_log[i + 1] == "END", (

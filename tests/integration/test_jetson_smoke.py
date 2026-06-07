@@ -61,21 +61,17 @@ conftest.py 透過 sys.modules.setdefault() 設定 GPIO mock。
 from __future__ import annotations
 
 import os
-import time
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Jetson 環境檢測
 # ---------------------------------------------------------------------------
 
+
 def _is_jetson() -> bool:
     """/etc/nv_tegra_release 在 JetPack 安裝後存在，是可靠的 Jetson 識別標誌。"""
-    return (
-        os.path.exists("/etc/nv_tegra_release")
-        or os.path.exists("/etc/nvpmodel.conf")
-    )
+    return os.path.exists("/etc/nv_tegra_release") or os.path.exists("/etc/nvpmodel.conf")
 
 
 # 模組層級 skip：不在 Jetson 上時，整個檔案的所有測試都被跳過
@@ -93,12 +89,13 @@ pytestmark = [
 # ---------------------------------------------------------------------------
 # 測試時間常數（縮短到可接受的 smoke test 時間）
 # ---------------------------------------------------------------------------
-_SMOKE_DURATION_S: float = 0.10   # LED/buzzer 操作的最短時間
+_SMOKE_DURATION_S: float = 0.10  # LED/buzzer 操作的最短時間
 
 
 # ===========================================================================
 # IT-7-A：LED 硬體初始化與基本操作
 # ===========================================================================
+
 
 class TestLedHardwareSmoke:
     """LED 在真實 Jetson GPIO 上的基本可用性。"""
@@ -111,6 +108,7 @@ class TestLedHardwareSmoke:
         若針腳接線錯誤或 GPIO overlay 未設定，這裡就會拋 RuntimeError。
         """
         from src.led import LED
+
         led = LED()
         led.cleanup()
 
@@ -122,6 +120,7 @@ class TestLedHardwareSmoke:
         CI 只驗證不拋例外；肉眼觀察確認燈有亮。
         """
         from src.led import LED
+
         led = LED()
         try:
             led.indicate(success=True, duration=_SMOKE_DURATION_S)
@@ -135,6 +134,7 @@ class TestLedHardwareSmoke:
         在真實硬體上：紅燈會短暫亮起然後熄滅。
         """
         from src.led import LED
+
         led = LED()
         try:
             led.indicate(success=False, duration=_SMOKE_DURATION_S)
@@ -146,12 +146,14 @@ class TestLedHardwareSmoke:
 # IT-7-B：Buzzer 硬體初始化與基本操作
 # ===========================================================================
 
+
 class TestBuzzerHardwareSmoke:
     """Buzzer 在真實 Jetson GPIO 上的基本可用性。"""
 
     def test_buzzer_initializes_without_error(self) -> None:
         """Buzzer() 初始化不拋例外。"""
         from src.buzzer import Buzzer
+
         buz = Buzzer()
         buz.cleanup()
 
@@ -162,6 +164,7 @@ class TestBuzzerHardwareSmoke:
         在真實硬體上：會聽到一聲短促的嗶聲。
         """
         from src.buzzer import Buzzer
+
         buz = Buzzer()
         try:
             buz._beep(_SMOKE_DURATION_S)
@@ -172,6 +175,7 @@ class TestBuzzerHardwareSmoke:
 # ===========================================================================
 # IT-7-C：ActuatorController 整合硬體 smoke test
 # ===========================================================================
+
 
 class TestActuatorHardwareSmoke:
     """ActuatorController 在真實硬體上的最短可用性驗證。"""
@@ -204,12 +208,13 @@ class TestActuatorHardwareSmoke:
         from src.actuator_controller import ActuatorController
 
         ctrl = ActuatorController()
-        ctrl.cleanup()   # 應不拋任何例外
+        ctrl.cleanup()  # 應不拋任何例外
 
 
 # ===========================================================================
 # IT-7-D：HC-SR04 硬體初始化
 # ===========================================================================
+
 
 class TestHcSr04HardwareSmoke:
     """HC-SR04 在真實 Jetson GPIO 上的基本可用性。"""
@@ -222,6 +227,7 @@ class TestHcSr04HardwareSmoke:
         這裡會因 ECHO pin 無法設為 IN 模式而拋 RuntimeError。
         """
         from src.hc_sr04 import HcSr04
+
         sensor = HcSr04()
         sensor.cleanup()
 
@@ -234,14 +240,13 @@ class TestHcSr04HardwareSmoke:
         CI 只驗證不拋例外且回傳型別正確。
         """
         from src.hc_sr04 import HcSr04
+
         sensor = HcSr04()
         try:
             distance = sensor._measure_distance()
             assert isinstance(distance, float), (
                 f"_measure_distance() 應回傳 float，實際回傳 {type(distance)}"
             )
-            assert distance > 0, (
-                f"_measure_distance() 回傳非正值 {distance}"
-            )
+            assert distance > 0, f"_measure_distance() 回傳非正值 {distance}"
         finally:
             sensor.cleanup()

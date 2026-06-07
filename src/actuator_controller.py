@@ -28,11 +28,11 @@ logger = logging.getLogger(__name__)
 # Timing constants — all durations in seconds
 # Change these constants to tune behaviour; never scatter magic numbers in code
 # ---------------------------------------------------------------------------
-_GRANT_LED_S: float = 3.0       # green LED hold on GRANT
-_DENY_LED_S: float = 2.0        # red LED hold on DENY / UNKNOWN / SPOOF
-_ALERT_BEEPS: int = 3           # number of beeps on UNKNOWN / SPOOF
-_BEEP_ON_S: float = 0.20        # buzzer ON duration per beep
-_BEEP_OFF_S: float = 0.15       # buzzer OFF gap between beeps
+_GRANT_LED_S: float = 3.0  # green LED hold on GRANT
+_DENY_LED_S: float = 2.0  # red LED hold on DENY / UNKNOWN / SPOOF
+_ALERT_BEEPS: int = 3  # number of beeps on UNKNOWN / SPOOF
+_BEEP_ON_S: float = 0.20  # buzzer ON duration per beep
+_BEEP_OFF_S: float = 0.15  # buzzer OFF gap between beeps
 
 
 class ActuatorController:
@@ -96,9 +96,7 @@ class ActuatorController:
             logger.info("ACT GRANT — servo unlock + green LED")
             # Start servo unlock (blocks for UNLOCK_HOLD_S internally)
             # We run it in a thread so green LED can be concurrent
-            servo_thread = threading.Thread(
-                target=self._servo.unlock_then_relock, daemon=True
-            )
+            servo_thread = threading.Thread(target=self._servo.unlock_then_relock, daemon=True)
             servo_thread.start()
             # Green LED stays on for grant duration
             self._led.indicate(success=True, duration=_GRANT_LED_S)
@@ -167,6 +165,7 @@ class ActuatorController:
     def _multi_beep(self, count: int) -> None:
         """Emit *count* short beeps with gaps between them."""
         import time
+
         for i in range(count):
             # Directly drive buzzer pin via its private _beep if available,
             # otherwise fall back to indicate(success=False) once.

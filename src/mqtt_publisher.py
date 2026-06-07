@@ -51,9 +51,9 @@ DEFAULT_BROKER_PORT: int = 1883
 DEFAULT_KEEPALIVE_SEC: int = 60
 
 # QoS levels per topic (matches proposal rationale)
-QOS_EVENTS: int = 0      # per-decision; tolerate drops, latency matters
-QOS_STATUS: int = 1      # door state; must be delivered
-QOS_HEARTBEAT: int = 0   # 1 Hz health; stale data is fine
+QOS_EVENTS: int = 0  # per-decision; tolerate drops, latency matters
+QOS_STATUS: int = 1  # door state; must be delivered
+QOS_HEARTBEAT: int = 0  # 1 Hz health; stale data is fine
 
 
 class MqttPublisher:
@@ -98,10 +98,12 @@ class MqttPublisher:
         self._broker_port = broker_port
         self._connected = False
 
-        factory = client_factory or (lambda: mqtt.Client(
-            client_id=client_id,
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-        ))
+        factory = client_factory or (
+            lambda: mqtt.Client(
+                client_id=client_id,
+                callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            )
+        )
         self._client: mqtt.Client = factory()
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
@@ -304,6 +306,7 @@ class MqttPublisher:
 # ---------------------------------------------------------------------------
 # Module-level helper
 # ---------------------------------------------------------------------------
+
 
 def _now_iso() -> str:
     """Return the current UTC time as an ISO 8601 string."""

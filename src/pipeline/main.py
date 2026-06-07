@@ -114,7 +114,11 @@ def make_decision(
     # 條件 3：時間一致性（連續 3 幀）
     authorized, name = voter.vote(recog_result.name)
     if authorized:
-        return True, name, f"similarity={recog_result.similarity:.3f}, liveness={liveness_result.score:.3f}"
+        return (
+            True,
+            name,
+            f"similarity={recog_result.similarity:.3f}, liveness={liveness_result.score:.3f}",
+        )
 
     return False, recog_result.name, f"waiting frames ({len(voter.buffer)}/{voter.required})"
 
@@ -139,8 +143,7 @@ def draw_overlay(
 
         # 標籤
         label = f"{name} ({face.confidence:.2f})"
-        cv2.putText(vis, label, (x1, y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+        cv2.putText(vis, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
 
         # 5 keypoints
         for kp in face.keypoints:
@@ -149,12 +152,10 @@ def draw_overlay(
 
         # 狀態訊息
         status = "ACCESS GRANTED" if granted else reason
-        cv2.putText(vis, status, (x1, y2 + 25),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+        cv2.putText(vis, status, (x1, y2 + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
     # FPS
-    cv2.putText(vis, f"FPS: {fps:.1f}", (20, 40),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 0), 2)
+    cv2.putText(vis, f"FPS: {fps:.1f}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 0), 2)
 
     return vis
 
@@ -169,10 +170,10 @@ def run_pipeline(config: dict, display: bool = True) -> None:
         display: 是否顯示即時畫面（headless 模式設為 False）
     """
     cfg_models = config["models"]
-    cfg_recog  = config["recognition"]
+    cfg_recog = config["recognition"]
 
     # 載入三個模型
-    detector   = FaceDetector(
+    detector = FaceDetector(
         engine_path=cfg_models["yolo"]["engine"],
         conf_threshold=0.5,
         input_size=cfg_models["yolo"]["input_size"],
@@ -182,7 +183,7 @@ def run_pipeline(config: dict, display: bool = True) -> None:
         db_path=cfg_recog["db_path"],
         threshold=cfg_recog["similarity_threshold"],
     )
-    antispoof  = AntiSpoof(
+    antispoof = AntiSpoof(
         engine_path=cfg_models["minifasnet"]["engine"],
     )
 
@@ -217,7 +218,7 @@ def run_pipeline(config: dict, display: bool = True) -> None:
                     continue
 
                 # ── Process：辨識 + 活體 ─────────────────────────────────
-                recog   = recognizer.match(face.crop)
+                recog = recognizer.match(face.crop)
                 liveness = antispoof.predict(face.crop)
 
                 # ── Decide：三條件判斷 ───────────────────────────────────

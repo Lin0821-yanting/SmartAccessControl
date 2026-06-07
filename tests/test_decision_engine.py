@@ -67,7 +67,6 @@ from src.decision_engine import (
     DecisionEngine,
 )
 
-
 # ---------------------------------------------------------------------------
 # Shared fixtures
 # ---------------------------------------------------------------------------
@@ -88,9 +87,7 @@ def fast_engine() -> DecisionEngine:
 def _pass_frames(eng: DecisionEngine, n: int) -> list[Decision]:
     """Feed *n* fully-qualifying frames and return every Decision produced."""
     return [
-        eng.evaluate(
-            similarity=SIMILARITY_THRESHOLD, anti_spoof_pass=True, face_in_db=True
-        )
+        eng.evaluate(similarity=SIMILARITY_THRESHOLD, anti_spoof_pass=True, face_in_db=True)
         for _ in range(n)
     ]
 
@@ -105,9 +102,7 @@ class TestSpecifiedScenarios:
 
     # A1 ── 真實情況正確通過 ─────────────────────────────────────────────────
 
-    def test_a1_genuine_person_grants_after_required_frames(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_a1_genuine_person_grants_after_required_frames(self, engine: DecisionEngine) -> None:
         """A genuine enrolled person passes after REQUIRED_CONSECUTIVE_FRAMES frames."""
         decisions = _pass_frames(engine, REQUIRED_CONSECUTIVE_FRAMES)
         assert decisions[-1] is Decision.GRANT
@@ -120,15 +115,11 @@ class TestSpecifiedScenarios:
 
     # A2 ── 真實情況露幀 / 遮蔽 ───────────────────────────────────────────────
 
-    def test_a2_frame_drop_resets_and_requires_restart(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_a2_frame_drop_resets_and_requires_restart(self, engine: DecisionEngine) -> None:
         """A frame drop (similarity below threshold) mid-sequence resets the counter."""
         # Accumulate n-1 good frames, then one bad frame, then restart
         for _ in range(REQUIRED_CONSECUTIVE_FRAMES - 1):
-            engine.evaluate(
-                similarity=SIMILARITY_THRESHOLD, anti_spoof_pass=True, face_in_db=True
-            )
+            engine.evaluate(similarity=SIMILARITY_THRESHOLD, anti_spoof_pass=True, face_in_db=True)
         # Simulate occlusion (similarity drops)
         drop = engine.evaluate(
             similarity=SIMILARITY_THRESHOLD - 0.01,
@@ -148,24 +139,16 @@ class TestSpecifiedScenarios:
         decisions = _pass_frames(engine, REQUIRED_CONSECUTIVE_FRAMES)
         assert decisions[-1] is Decision.GRANT
 
-    def test_a2_occlusion_via_unknown_mid_sequence(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_a2_occlusion_via_unknown_mid_sequence(self, engine: DecisionEngine) -> None:
         """Face goes out of DB (occlusion / wrong angle) mid-sequence resets counter."""
-        engine.evaluate(
-            similarity=SIMILARITY_THRESHOLD, anti_spoof_pass=True, face_in_db=True
-        )
-        occluded = engine.evaluate(
-            similarity=0.0, anti_spoof_pass=True, face_in_db=False
-        )
+        engine.evaluate(similarity=SIMILARITY_THRESHOLD, anti_spoof_pass=True, face_in_db=True)
+        occluded = engine.evaluate(similarity=0.0, anti_spoof_pass=True, face_in_db=False)
         assert occluded is Decision.UNKNOWN
         assert engine.consecutive_frames == 0
 
     # A3 ── 距離未達標 (HC-SR04 gate) ─────────────────────────────────────────
 
-    def test_a3_hcsr04_not_triggered_returns_ignore(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_a3_hcsr04_not_triggered_returns_ignore(self, engine: DecisionEngine) -> None:
         """When HC-SR04 does not trigger, ignore() returns IGNORE."""
         result = engine.ignore()
         assert result is Decision.IGNORE
@@ -176,9 +159,7 @@ class TestSpecifiedScenarios:
             engine.ignore()
         assert engine.consecutive_frames == 0
 
-    def test_a3_ignore_after_partial_accumulation_resets(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_a3_ignore_after_partial_accumulation_resets(self, engine: DecisionEngine) -> None:
         """ignore() called mid-sequence resets a partially accumulated counter."""
         _pass_frames(engine, REQUIRED_CONSECUTIVE_FRAMES - 1)
         assert engine.consecutive_frames == REQUIRED_CONSECUTIVE_FRAMES - 1
@@ -187,9 +168,7 @@ class TestSpecifiedScenarios:
 
     # A4 ── 照片但通過 (high similarity, anti-spoof disabled upstream — must block) ─
 
-    def test_a4_high_similarity_with_spoof_fail_returns_spoof(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_a4_high_similarity_with_spoof_fail_returns_spoof(self, engine: DecisionEngine) -> None:
         """Even similarity=1.0 is rejected when anti_spoof_pass=False."""
         result = engine.evaluate(
             similarity=1.0,
@@ -198,9 +177,7 @@ class TestSpecifiedScenarios:
         )
         assert result is Decision.SPOOF
 
-    def test_a4_spoof_with_face_in_db_false_still_spoof(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_a4_spoof_with_face_in_db_false_still_spoof(self, engine: DecisionEngine) -> None:
         """SPOOF takes priority even when face_in_db is also False."""
         result = engine.evaluate(
             similarity=0.0,
@@ -211,9 +188,7 @@ class TestSpecifiedScenarios:
 
     # A5 ── 照片成功過濾 ───────────────────────────────────────────────────────
 
-    def test_a5_printed_photo_attack_filtered_as_spoof(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_a5_printed_photo_attack_filtered_as_spoof(self, engine: DecisionEngine) -> None:
         """A printed photo (anti_spoof_pass=False) is correctly classified SPOOF."""
         result = engine.evaluate(
             similarity=0.92,
@@ -222,9 +197,7 @@ class TestSpecifiedScenarios:
         )
         assert result is Decision.SPOOF
 
-    def test_a5_screen_replay_attack_filtered_as_spoof(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_a5_screen_replay_attack_filtered_as_spoof(self, engine: DecisionEngine) -> None:
         """A screen replay attack (anti_spoof_pass=False) is correctly SPOOF."""
         result = engine.evaluate(
             similarity=0.88,
@@ -242,10 +215,8 @@ class TestSpecifiedScenarios:
 class TestBoundaryValues:
     """Group B: exact-threshold edge cases."""
 
-    def test_b1_similarity_exactly_at_threshold_passes(
-        self, engine: DecisionEngine
-    ) -> None:
-        """similarity == SIMILARITY_THRESHOLD must count as a qualifying frame (>=)."""
+    def test_b1_similarity_exactly_at_threshold_passes(self, engine: DecisionEngine) -> None:
+        """Similarity == SIMILARITY_THRESHOLD must count as a qualifying frame (>=)."""
         result = engine.evaluate(
             similarity=SIMILARITY_THRESHOLD,
             anti_spoof_pass=True,
@@ -258,7 +229,7 @@ class TestBoundaryValues:
     def test_b1_similarity_one_ulp_below_threshold_returns_deny(
         self, engine: DecisionEngine
     ) -> None:
-        """similarity just below threshold must return DENY."""
+        """Similarity just below threshold must return DENY."""
         result = engine.evaluate(
             similarity=SIMILARITY_THRESHOLD - 1e-9,
             anti_spoof_pass=True,
@@ -266,9 +237,7 @@ class TestBoundaryValues:
         )
         assert result is Decision.DENY
 
-    def test_b2_required_frames_one_grants_immediately(
-        self, fast_engine: DecisionEngine
-    ) -> None:
+    def test_b2_required_frames_one_grants_immediately(self, fast_engine: DecisionEngine) -> None:
         """With required_frames=1 the very first qualifying frame issues GRANT."""
         result = fast_engine.evaluate(
             similarity=SIMILARITY_THRESHOLD,
@@ -277,9 +246,7 @@ class TestBoundaryValues:
         )
         assert result is Decision.GRANT
 
-    def test_b3_counter_reaches_n_minus_one_then_deny_resets(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_b3_counter_reaches_n_minus_one_then_deny_resets(self, engine: DecisionEngine) -> None:
         """Counter at required_frames-1 then a DENY resets it to 0."""
         _pass_frames(engine, REQUIRED_CONSECUTIVE_FRAMES - 1)
         assert engine.consecutive_frames == REQUIRED_CONSECUTIVE_FRAMES - 1
@@ -287,9 +254,7 @@ class TestBoundaryValues:
         assert engine.consecutive_frames == 0
 
     @pytest.mark.parametrize("sim", [0.0, 0.5, 0.849])
-    def test_b1_various_below_threshold_all_deny(
-        self, engine: DecisionEngine, sim: float
-    ) -> None:
+    def test_b1_various_below_threshold_all_deny(self, engine: DecisionEngine, sim: float) -> None:
         """Any similarity below SIMILARITY_THRESHOLD with face_in_db=True yields DENY."""
         result = engine.evaluate(similarity=sim, anti_spoof_pass=True, face_in_db=True)
         assert result is Decision.DENY
@@ -311,9 +276,7 @@ class TestBoundaryValues:
 class TestPriorityOrdering:
     """Group C: verifies the SPOOF > UNKNOWN > DENY > accumulate > GRANT chain."""
 
-    def test_c1_spoof_overrides_perfect_similarity(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_c1_spoof_overrides_perfect_similarity(self, engine: DecisionEngine) -> None:
         """SPOOF beats similarity=1.0 and face_in_db=True."""
         assert (
             engine.evaluate(similarity=1.0, anti_spoof_pass=False, face_in_db=True)
@@ -341,9 +304,7 @@ class TestPriorityOrdering:
             is Decision.UNKNOWN
         )
 
-    def test_c3_deny_when_in_db_but_low_similarity(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_c3_deny_when_in_db_but_low_similarity(self, engine: DecisionEngine) -> None:
         """DENY is returned when face_in_db=True but similarity < threshold."""
         assert (
             engine.evaluate(
@@ -354,9 +315,7 @@ class TestPriorityOrdering:
             is Decision.DENY
         )
 
-    def test_c3_deny_not_spoof_when_only_similarity_fails(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_c3_deny_not_spoof_when_only_similarity_fails(self, engine: DecisionEngine) -> None:
         """With anti_spoof_pass=True the result must be DENY, not SPOOF."""
         result = engine.evaluate(similarity=0.0, anti_spoof_pass=True, face_in_db=True)
         assert result is Decision.DENY
@@ -406,9 +365,7 @@ class TestStateMachineResets:
         engine.reset()
         assert engine.consecutive_frames == 0
 
-    def test_d6_counter_is_zero_immediately_after_grant(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_d6_counter_is_zero_immediately_after_grant(self, engine: DecisionEngine) -> None:
         """After GRANT is issued the counter is reset for the next person."""
         _pass_frames(engine, REQUIRED_CONSECUTIVE_FRAMES)
         assert engine.consecutive_frames == 0
@@ -422,9 +379,7 @@ class TestStateMachineResets:
 class TestMultiFrameAccumulation:
     """Group E: counter arithmetic and interruption behaviour."""
 
-    def test_e1_counter_increments_on_each_qualifying_frame(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_e1_counter_increments_on_each_qualifying_frame(self, engine: DecisionEngine) -> None:
         """consecutive_frames increments by 1 for each qualifying frame."""
         for expected in range(1, REQUIRED_CONSECUTIVE_FRAMES):
             engine.evaluate(
@@ -448,9 +403,7 @@ class TestMultiFrameAccumulation:
         engine.evaluate(similarity=0.9, anti_spoof_pass=False, face_in_db=True)
         assert engine.consecutive_frames == 0
 
-    def test_e4_unknown_mid_sequence_resets_counter(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_e4_unknown_mid_sequence_resets_counter(self, engine: DecisionEngine) -> None:
         """An UNKNOWN mid-sequence zeroes the counter."""
         _pass_frames(engine, REQUIRED_CONSECUTIVE_FRAMES - 1)
         engine.evaluate(similarity=0.0, anti_spoof_pass=True, face_in_db=False)
@@ -480,17 +433,13 @@ class TestConstructorValidation:
     """Group F: invalid constructor arguments must raise ValueError."""
 
     @pytest.mark.parametrize("bad_threshold", [0.0, -0.1, -1.0])
-    def test_f1_similarity_threshold_zero_or_negative_raises(
-        self, bad_threshold: float
-    ) -> None:
+    def test_f1_similarity_threshold_zero_or_negative_raises(self, bad_threshold: float) -> None:
         """similarity_threshold <= 0 must raise ValueError."""
         with pytest.raises(ValueError, match="similarity_threshold"):
             DecisionEngine(similarity_threshold=bad_threshold)
 
     @pytest.mark.parametrize("bad_threshold", [1.001, 2.0, 100.0])
-    def test_f2_similarity_threshold_above_one_raises(
-        self, bad_threshold: float
-    ) -> None:
+    def test_f2_similarity_threshold_above_one_raises(self, bad_threshold: float) -> None:
         """similarity_threshold > 1 must raise ValueError."""
         with pytest.raises(ValueError, match="similarity_threshold"):
             DecisionEngine(similarity_threshold=bad_threshold)
@@ -506,15 +455,10 @@ class TestConstructorValidation:
         custom_threshold = 0.95
         eng = DecisionEngine(similarity_threshold=custom_threshold)
         # 0.90 is above default but below custom → must DENY
-        assert (
-            eng.evaluate(similarity=0.90, anti_spoof_pass=True, face_in_db=True)
-            is Decision.DENY
-        )
+        assert eng.evaluate(similarity=0.90, anti_spoof_pass=True, face_in_db=True) is Decision.DENY
         # 0.95 is exactly at custom threshold → must accumulate (not DENY)
         eng2 = DecisionEngine(similarity_threshold=custom_threshold)
-        result = eng2.evaluate(
-            similarity=custom_threshold, anti_spoof_pass=True, face_in_db=True
-        )
+        result = eng2.evaluate(similarity=custom_threshold, anti_spoof_pass=True, face_in_db=True)
         assert result is not Decision.DENY
 
     def test_f4_custom_required_frames_respected(self) -> None:
@@ -523,9 +467,7 @@ class TestConstructorValidation:
         decisions = _pass_frames(eng, 4)
         assert all(d is Decision.IGNORE for d in decisions)
         assert (
-            eng.evaluate(
-                similarity=SIMILARITY_THRESHOLD, anti_spoof_pass=True, face_in_db=True
-            )
+            eng.evaluate(similarity=SIMILARITY_THRESHOLD, anti_spoof_pass=True, face_in_db=True)
             is Decision.GRANT
         )
 
@@ -548,15 +490,11 @@ class TestConstructorValidation:
 class TestIgnoreAndReset:
     """Group G: explicit ignore/reset paths."""
 
-    def test_g1_ignore_always_returns_decision_ignore(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_g1_ignore_always_returns_decision_ignore(self, engine: DecisionEngine) -> None:
         """ignore() always returns Decision.IGNORE regardless of prior state."""
         assert engine.ignore() is Decision.IGNORE
 
-    def test_g2_ignore_resets_mid_accumulation_counter(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_g2_ignore_resets_mid_accumulation_counter(self, engine: DecisionEngine) -> None:
         """ignore() called after partial accumulation resets counter to 0."""
         _pass_frames(engine, REQUIRED_CONSECUTIVE_FRAMES - 1)
         engine.ignore()
@@ -600,9 +538,7 @@ class TestConsecutiveFramesProperty:
             )
             assert engine.consecutive_frames == i
 
-    def test_h3_property_is_zero_immediately_after_grant(
-        self, engine: DecisionEngine
-    ) -> None:
+    def test_h3_property_is_zero_immediately_after_grant(self, engine: DecisionEngine) -> None:
         """Property is 0 right after a GRANT is issued."""
         _pass_frames(engine, REQUIRED_CONSECUTIVE_FRAMES)
         assert engine.consecutive_frames == 0

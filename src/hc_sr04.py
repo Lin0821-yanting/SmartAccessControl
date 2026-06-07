@@ -33,8 +33,8 @@ ECHO_TIMEOUT_S: float = 0.05
 POLL_INTERVAL_S: float = 0.10
 APPROACH_THRESHOLD_CM: float = 60.0
 
-_CONFIRM_SAMPLES: int = 3    # total samples per majority-vote window
-_CONFIRM_HITS: int = 2       # minimum hits required to confirm proximity
+_CONFIRM_SAMPLES: int = 3  # total samples per majority-vote window
+_CONFIRM_HITS: int = 2  # minimum hits required to confirm proximity
 _STUCK_RECOVERY_S: float = 0.15  # TRIG-LOW hold time to un-stuck ECHO
 
 
@@ -126,8 +126,7 @@ class HcSr04:
 
     def _confirmed_near(self) -> bool:
         hits = sum(
-            1 for _ in range(_CONFIRM_SAMPLES)
-            if self._measure_distance() <= self.threshold_cm
+            1 for _ in range(_CONFIRM_SAMPLES) if self._measure_distance() <= self.threshold_cm
         )
         return hits >= _CONFIRM_HITS
 
@@ -162,6 +161,7 @@ class HcSr04:
         with contextlib.suppress(Exception):
             GPIO.output(self.trigger_pin, GPIO.LOW)
         GPIO.cleanup([self.trigger_pin, self.echo_pin])
+
 
 # Alias for backward compatibility with orchestrator.py
 HCSR04 = HcSr04
