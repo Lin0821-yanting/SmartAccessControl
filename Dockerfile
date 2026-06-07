@@ -33,6 +33,8 @@ RUN pip install \
         "paho-mqtt>=2.0" \
         "gpiod>=2.4.2" \
         "pyyaml>=6.0" \
+    --index-url https://pypi.org/simple \
+    --extra-index-url https://pypi.jetson-ai-lab.dev/jp6/cu126 \
     --break-system-packages \
     --no-cache-dir
 
