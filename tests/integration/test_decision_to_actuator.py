@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Yanting Lin, henrytsai
 # Tatung University — I4210 AI實務專題
-"""tests/integration/test_decision_to_actuator.py — IT-1
+"""tests/integration/test_decision_to_actuator.py — IT-1.
 
 Integration test: DecisionEngine ↔ ActuatorController contract.
 
@@ -63,13 +63,13 @@ from src.orchestrator import Orchestrator
 
 
 def _blank() -> np.ndarray:
-    """空白 480×640 BGR 影像，供 _tick() 當作相機 frame 使用。"""
+    """空白 480×640 BGR 影像，供 _tick() 當作相機 frame 使用。."""
     return np.zeros((480, 640, 3), dtype=np.uint8)
 
 
 def _make_face() -> MagicMock:
     """
-    模擬 FaceDetector.detect() 回傳的單一人臉物件。
+    模擬 FaceDetector.detect() 回傳的單一人臉物件。.
 
     bbox 必須是 numpy array，因為 _tick() 中執行：
         bbox = face.bbox.astype(int).tolist()
@@ -87,7 +87,7 @@ def _make_recog(
     authorized: bool = True,
 ) -> MagicMock:
     """
-    模擬 FaceRecognizer.match() 的回傳值。
+    模擬 FaceRecognizer.match() 的回傳值。.
 
     authorized 對應 _tick() 中的 face_in_db：
         face_in_db = recog.authorized
@@ -101,7 +101,7 @@ def _make_recog(
 
 def _make_liveness(is_live: bool = True, score: float = 0.88) -> MagicMock:
     """
-    模擬 AntiSpoof.predict() 的回傳值。
+    模擬 AntiSpoof.predict() 的回傳值。.
 
     is_live 對應 _tick() 中的 anti_spoof_pass：
         anti_spoof_pass = liveness.is_live
@@ -120,7 +120,7 @@ def _make_liveness(is_live: bool = True, score: float = 0.88) -> MagicMock:
 @pytest.fixture()
 def hw() -> dict:
     """
-    GPIO 邊界 mock：LED、Buzzer、Servo 各一個 MagicMock。
+    GPIO 邊界 mock：LED、Buzzer、Servo 各一個 MagicMock。.
 
     這是 IT-1 的 mock 邊界。ActuatorController 透過依賴注入接收這三個物件，
     所以真實的 GPIO 程式碼不會被執行，測試可以在 x86 CI 上跑。
@@ -134,13 +134,13 @@ def hw() -> dict:
 
 @pytest.fixture()
 def engine() -> DecisionEngine:
-    """真實 DecisionEngine，使用 proposal §4.5 的生產參數。"""
+    """真實 DecisionEngine，使用 proposal §4.5 的生產參數。."""
     return DecisionEngine(similarity_threshold=0.85, required_frames=3)
 
 
 @pytest.fixture()
 def actuator(hw: dict) -> ActuatorController:
-    """真實 ActuatorController，注入 mock GPIO hardware。"""
+    """真實 ActuatorController，注入 mock GPIO hardware。."""
     return ActuatorController(
         led=hw["led"],
         buzzer=hw["buzzer"],
@@ -150,7 +150,7 @@ def actuator(hw: dict) -> ActuatorController:
 
 @pytest.fixture()
 def ai_mocks() -> dict:
-    """AI pipeline 的三個 mock：detector、recognizer、antispoof。"""
+    """AI pipeline 的三個 mock：detector、recognizer、antispoof。."""
     return {
         "detector": MagicMock(),
         "recognizer": MagicMock(),
@@ -160,12 +160,7 @@ def ai_mocks() -> dict:
 
 @pytest.fixture()
 def orc(engine: DecisionEngine, actuator: ActuatorController, ai_mocks: dict) -> Orchestrator:
-    """
-    完整接線的 Orchestrator：
-      - 真實 DecisionEngine（真實狀態機邏輯）
-      - 真實 ActuatorController（mock GPIO 邊界）
-      - mock AI pipeline、sensor、publisher
-    """
+    """完整接線的 Orchestrator：真實 engine + 真實 actuator + mock AI/sensor/publisher."""
     return Orchestrator(
         detector=ai_mocks["detector"],
         recognizer=ai_mocks["recognizer"],
@@ -191,7 +186,7 @@ def _run_tick(
     distance: float = 30.0,
 ) -> None:
     """
-    執行一次 Orchestrator._tick()。
+    執行一次 Orchestrator._tick()。.
 
     - sensor._measure_distance 回傳 distance（預設 30 cm，小於門檻 60 cm → gate open）
     - detector 回傳一張人臉
@@ -218,11 +213,11 @@ def _run_tick(
 
 
 class TestGrantPath:
-    """三幀累積 → GRANT → servo 解鎖 + 綠燈。"""
+    """三幀累積 → GRANT → servo 解鎖 + 綠燈。."""
 
     @pytest.fixture(autouse=True)
     def _drive_grant(self, orc: Orchestrator, ai_mocks: dict, hw: dict) -> None:
-        """每個測試前共同執行：送三幀匹配訊號，等 grant thread 完成。"""
+        """每個測試前共同執行：送三幀匹配訊號，等 grant thread 完成。."""
         recog = _make_recog(similarity=0.92, authorized=True)
         liveness = _make_liveness(is_live=True)
         for _ in range(3):
@@ -247,7 +242,7 @@ class TestGrantPath:
         ai_mocks: dict,
     ) -> None:
         """
-        二幀不足以觸發 GRANT（engine 仍在累積中）。
+        二幀不足以觸發 GRANT（engine 仍在累積中）。.
 
         這個測試使用獨立的 engine 和 actuator（不用 _drive_grant fixture）
         以免被前三幀的狀態污染。
@@ -290,7 +285,7 @@ class TestGrantPath:
 
 
 class TestDenyPath:
-    """低相似度（臉在 DB 但不夠像） → DENY → 紅燈、靜音、servo 不動。"""
+    """低相似度（臉在 DB 但不夠像） → DENY → 紅燈、靜音、servo 不動。."""
 
     @pytest.fixture(autouse=True)
     def _drive_deny(self, orc: Orchestrator, ai_mocks: dict) -> None:
@@ -335,7 +330,7 @@ class TestDenyPath:
 
 
 class TestUnknownPath:
-    """臉不在 DB → UNKNOWN → 紅燈 + 三聲 buzzer。"""
+    """臉不在 DB → UNKNOWN → 紅燈 + 三聲 buzzer。."""
 
     @pytest.fixture(autouse=True)
     def _drive_unknown(self, orc: Orchestrator, ai_mocks: dict) -> None:
@@ -378,7 +373,7 @@ class TestUnknownPath:
 
 
 class TestSpoofPath:
-    """活體偵測失敗 → SPOOF → 紅燈 + 三聲 buzzer（硬體同 UNKNOWN，決策路徑不同）。"""
+    """活體偵測失敗 → SPOOF → 紅燈 + 三聲 buzzer（硬體同 UNKNOWN，決策路徑不同）。."""
 
     @pytest.fixture(autouse=True)
     def _drive_spoof(self, orc: Orchestrator, ai_mocks: dict) -> None:
@@ -418,7 +413,7 @@ class TestSpoofPath:
 
 
 class TestIgnorePath:
-    """累積中的第一幀 → IGNORE → 所有 actuator 靜默。"""
+    """累積中的第一幀 → IGNORE → 所有 actuator 靜默。."""
 
     @pytest.fixture(autouse=True)
     def _drive_ignore(self, orc: Orchestrator, ai_mocks: dict) -> None:

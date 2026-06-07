@@ -13,6 +13,7 @@ Strategy
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from unittest.mock import MagicMock, patch
@@ -436,11 +437,9 @@ class TestHeartbeatLoop:
             patch("src.orchestrator.time.sleep", side_effect=fake_sleep),
             patch("src.orchestrator._read_cpu_temp", return_value=55.0),
             patch("src.orchestrator._read_ram_gb", return_value=2.5),
+            contextlib.suppress(SystemExit),
         ):
-            try:
-                orc._heartbeat_loop()
-            except SystemExit:
-                pass
+            orc._heartbeat_loop()
 
         mocks["publisher"].publish_heartbeat.assert_called_once()
 
@@ -454,11 +453,11 @@ class TestHeartbeatLoop:
 
         mocks["publisher"].publish_heartbeat.side_effect = RuntimeError("broker down")
 
-        with patch("src.orchestrator.time.sleep", side_effect=fake_sleep):
-            try:
-                orc._heartbeat_loop()
-            except SystemExit:
-                pass
+        with (
+            patch("src.orchestrator.time.sleep", side_effect=fake_sleep),
+            contextlib.suppress(SystemExit),
+        ):
+            orc._heartbeat_loop()
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Yanting Lin, henrytsai
 # Tatung University — I4210 AI實務專題
-"""tests/integration/test_hardware_safety.py — IT-5
+"""tests/integration/test_hardware_safety.py — IT-5.
 
 Integration test: 硬體安全 — cleanup() 後所有 GPIO pin 回到 LOW。
 
@@ -72,11 +72,7 @@ _ALL_OUTPUT_PINS = (GREEN_LED_PIN, RED_LED_PIN, BUZZER_PIN)  # 7, 11, 29
 
 @pytest.fixture()
 def gpio_mock():
-    """
-    共享 Jetson.GPIO mock（由 conftest.py 設定）。
-    在每個測試前後重置 output 和 cleanup 的呼叫記錄，
-    避免跨測試的 call_args_list 互相污染。
-    """
+    """共享 Jetson.GPIO mock（由 conftest.py 設定）；每個測試前後重置呼叫記錄，避免污染."""
     mock = sys.modules["Jetson.GPIO"]
     mock.output.reset_mock()
     mock.cleanup.reset_mock()
@@ -88,7 +84,7 @@ def gpio_mock():
 @pytest.fixture()
 def led(gpio_mock):
     """
-    真實 LED 實例（mocked GPIO）。
+    真實 LED 實例（mocked GPIO）。.
 
     建立後立即 reset GPIO.output 記錄，
     讓後續的測試只看到 cleanup() 相關的 GPIO 呼叫。
@@ -100,7 +96,7 @@ def led(gpio_mock):
 
 @pytest.fixture()
 def buzzer(gpio_mock):
-    """真實 Buzzer 實例（mocked GPIO）。建立後重置 output 記錄。"""
+    """真實 Buzzer 實例（mocked GPIO）。建立後重置 output 記錄。."""
     instance = Buzzer()
     gpio_mock.output.reset_mock()
     return instance
@@ -108,13 +104,7 @@ def buzzer(gpio_mock):
 
 @pytest.fixture()
 def actuator(led: LED, buzzer: Buzzer, gpio_mock) -> ActuatorController:
-    """
-    真實 ActuatorController：
-      - 真實 LED（mock GPIO）→ cleanup() 會產生真實 GPIO.output(LOW) 呼叫
-      - 真實 Buzzer（mock GPIO）→ 同上
-      - mock Servo（gpiod，不是 Jetson.GPIO）→ 不影響 GPIO.output 記錄
-    建立後重置 output 記錄，使測試只追蹤 cleanup 相關的 GPIO 呼叫。
-    """
+    """真實 ActuatorController（真實 LED/Buzzer + mock Servo）；建立後重置 output 記錄."""
     ctrl = ActuatorController(
         led=led,
         buzzer=buzzer,
@@ -130,7 +120,7 @@ def actuator(led: LED, buzzer: Buzzer, gpio_mock) -> ActuatorController:
 
 
 def _low_calls_for_pin(gpio_mock, pin: int) -> list:
-    """回傳所有 ``GPIO.output(pin, LOW)`` 的呼叫記錄。"""
+    """回傳所有 ``GPIO.output(pin, LOW)`` 的呼叫記錄。."""
     return [
         c
         for c in gpio_mock.output.call_args_list
@@ -139,7 +129,7 @@ def _low_calls_for_pin(gpio_mock, pin: int) -> list:
 
 
 def _pin_ends_low(gpio_mock, pin: int) -> bool:
-    """確認指定 pin 的最後一次 GPIO.output 呼叫是 LOW。"""
+    """確認指定 pin 的最後一次 GPIO.output 呼叫是 LOW。."""
     pin_calls = [c for c in gpio_mock.output.call_args_list if c.args and c.args[0] == pin]
     if not pin_calls:
         return False
@@ -158,11 +148,11 @@ def _pin_ends_low(gpio_mock, pin: int) -> bool:
 
 
 class TestLedCleanupGpio:
-    """LED.cleanup() 後，green_pin 和 red_pin 的 GPIO.output 最後是 LOW。"""
+    """LED.cleanup() 後，green_pin 和 red_pin 的 GPIO.output 最後是 LOW。."""
 
     def test_cleanup_drives_green_pin_low(self, led: LED, gpio_mock) -> None:
         """
-        LED.cleanup() 必須呼叫 GPIO.output(green_pin, LOW)。
+        LED.cleanup() 必須呼叫 GPIO.output(green_pin, LOW)。.
 
         green LED 亮起後若程式異常退出而未執行 cleanup，
         綠燈會永遠亮著（視覺上誤導授權狀態）。
@@ -173,7 +163,7 @@ class TestLedCleanupGpio:
         )
 
     def test_cleanup_drives_red_pin_low(self, led: LED, gpio_mock) -> None:
-        """LED.cleanup() 必須呼叫 GPIO.output(red_pin, LOW)。"""
+        """LED.cleanup() 必須呼叫 GPIO.output(red_pin, LOW)。."""
         led.cleanup()
         assert _pin_ends_low(gpio_mock, RED_LED_PIN), (
             f"cleanup() 後 GPIO pin {RED_LED_PIN}（red LED）應為 LOW"
@@ -181,7 +171,7 @@ class TestLedCleanupGpio:
 
     def test_cleanup_calls_gpio_cleanup_for_both_pins(self, led: LED, gpio_mock) -> None:
         """
-        LED.cleanup() 必須呼叫 GPIO.cleanup([green_pin, red_pin]) 釋放資源。
+        LED.cleanup() 必須呼叫 GPIO.cleanup([green_pin, red_pin]) 釋放資源。.
 
         釋放 GPIO 資源讓其他程式（或下次啟動）可以重新配置同一個 pin，
         避免「RuntimeError: Pin already in use」。
@@ -209,11 +199,11 @@ class TestLedCleanupGpio:
 
 
 class TestBuzzerCleanupGpio:
-    """Buzzer.cleanup() 後，buzzer_pin 的 GPIO.output 最後是 LOW。"""
+    """Buzzer.cleanup() 後，buzzer_pin 的 GPIO.output 最後是 LOW。."""
 
     def test_cleanup_drives_buzzer_pin_low(self, buzzer: Buzzer, gpio_mock) -> None:
         """
-        Buzzer.cleanup() 必須呼叫 GPIO.output(BUZZER_PIN, LOW)。
+        Buzzer.cleanup() 必須呼叫 GPIO.output(BUZZER_PIN, LOW)。.
 
         若 buzzer 被中斷時 pin 停在 HIGH，蜂鳴器永遠響。
         cleanup() 是確保硬體安全的最後防線。
@@ -224,7 +214,7 @@ class TestBuzzerCleanupGpio:
         )
 
     def test_cleanup_calls_gpio_cleanup_for_buzzer_pin(self, buzzer: Buzzer, gpio_mock) -> None:
-        """Buzzer.cleanup() 必須呼叫 GPIO.cleanup([BUZZER_PIN]) 釋放資源。"""
+        """Buzzer.cleanup() 必須呼叫 GPIO.cleanup([BUZZER_PIN]) 釋放資源。."""
         buzzer.cleanup()
         cleanup_args = [
             c.args[0] if c.args else c.kwargs.get("channel_list")
@@ -251,13 +241,13 @@ class TestBuzzerCleanupGpio:
 
 
 class TestActuatorCleanupChain:
-    """actuator.cleanup() → 三個 output pin 全部被拉到 LOW。"""
+    """actuator.cleanup() → 三個 output pin 全部被拉到 LOW。."""
 
     def test_cleanup_drives_green_led_pin_low(
         self, actuator: ActuatorController, gpio_mock
     ) -> None:
         """
-        actuator.cleanup() → led.cleanup() → GPIO.output(green_pin, LOW)。
+        actuator.cleanup() → led.cleanup() → GPIO.output(green_pin, LOW)。.
 
         這是 actuator → LED → GPIO 三層傳播的驗證。
         """
@@ -267,12 +257,12 @@ class TestActuatorCleanupChain:
         )
 
     def test_cleanup_drives_red_led_pin_low(self, actuator: ActuatorController, gpio_mock) -> None:
-        """actuator.cleanup() → led.cleanup() → GPIO.output(red_pin, LOW)。"""
+        """actuator.cleanup() → led.cleanup() → GPIO.output(red_pin, LOW)。."""
         actuator.cleanup()
         assert _pin_ends_low(gpio_mock, RED_LED_PIN), "actuator.cleanup() 後 red LED pin 應為 LOW"
 
     def test_cleanup_drives_buzzer_pin_low(self, actuator: ActuatorController, gpio_mock) -> None:
-        """actuator.cleanup() → buzzer.cleanup() → GPIO.output(BUZZER_PIN, LOW)。"""
+        """actuator.cleanup() → buzzer.cleanup() → GPIO.output(BUZZER_PIN, LOW)。."""
         actuator.cleanup()
         assert _pin_ends_low(gpio_mock, BUZZER_PIN), "actuator.cleanup() 後 buzzer pin 應為 LOW"
 
@@ -280,7 +270,7 @@ class TestActuatorCleanupChain:
         self, actuator: ActuatorController, gpio_mock
     ) -> None:
         """
-        alert_unknown() 執行完後呼叫 cleanup() 不拋例外。
+        alert_unknown() 執行完後呼叫 cleanup() 不拋例外。.
 
         這是 CAPSTONE demo 的真實場景：有人觸發警報後按 Ctrl-C，
         run() 的 finally 區塊呼叫 actuator.cleanup()。
@@ -299,7 +289,7 @@ class TestActuatorCleanupChain:
 
     def test_cleanup_is_idempotent(self, actuator: ActuatorController, gpio_mock) -> None:
         """
-        連續呼叫 cleanup() 兩次不拋例外（冪等性）。
+        連續呼叫 cleanup() 兩次不拋例外（冪等性）。.
 
         edge case：若系統因為例外觸發兩次 cleanup（例如 finally 和 atexit），
         必須安全。mock GPIO 下 GPIO.cleanup() 是 no-op，所以測試通過；
@@ -318,19 +308,19 @@ class TestActuatorCleanupChain:
 
 
 class TestAllPinsProtectedAfterCleanup:
-    """actuator.cleanup() 後，所有 output pin 都在 LOW 狀態。"""
+    """actuator.cleanup() 後，所有 output pin 都在 LOW 狀態。."""
 
     def test_all_output_pins_are_low_after_cleanup(
         self, actuator: ActuatorController, gpio_mock
     ) -> None:
         """
-        actuator.cleanup() 呼叫後：
-          - GPIO pin 7  (green LED) 最後一次 output = LOW
-          - GPIO pin 11 (red LED)   最後一次 output = LOW
-          - GPIO pin 29 (buzzer)    最後一次 output = LOW
+        actuator.cleanup() 後三個 pin 全為 LOW.
 
-        這對應 CAPSTONE 的關鍵安全需求：
-        Ctrl-C 後門鎖恢復上鎖狀態、LED 熄滅、buzzer 靜音。
+        - GPIO pin 7  (green LED) 最後一次 output = LOW
+        - GPIO pin 11 (red LED)   最後一次 output = LOW
+        - GPIO pin 29 (buzzer)    最後一次 output = LOW
+
+        對應 CAPSTONE 安全需求：Ctrl-C 後 LED 熄滅、buzzer 靜音。
         """
         actuator.cleanup()
 

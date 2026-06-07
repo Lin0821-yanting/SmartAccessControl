@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Yanting Lin, henrytsai
 # Tatung University — I4210 AI實務專題
-"""tests/integration/test_jetson_smoke.py — IT-7
+"""tests/integration/test_jetson_smoke.py — IT-7.
 
 Integration test: Jetson 實機硬體 Smoke Test。
 
@@ -70,7 +70,7 @@ import pytest
 
 
 def _is_jetson() -> bool:
-    """/etc/nv_tegra_release 在 JetPack 安裝後存在，是可靠的 Jetson 識別標誌。"""
+    """/etc/nv_tegra_release 在 JetPack 安裝後存在，是可靠的 Jetson 識別標誌。."""
     return os.path.exists("/etc/nv_tegra_release") or os.path.exists("/etc/nvpmodel.conf")
 
 
@@ -98,11 +98,11 @@ _SMOKE_DURATION_S: float = 0.10  # LED/buzzer 操作的最短時間
 
 
 class TestLedHardwareSmoke:
-    """LED 在真實 Jetson GPIO 上的基本可用性。"""
+    """LED 在真實 Jetson GPIO 上的基本可用性。."""
 
     def test_led_initializes_without_error(self) -> None:
         """
-        LED() 在真實 GPIO 上初始化不拋例外。
+        LED() 在真實 GPIO 上初始化不拋例外。.
 
         覆蓋：GPIO.setmode(BOARD) + GPIO.setup(pin, OUT, initial=LOW)
         若針腳接線錯誤或 GPIO overlay 未設定，這裡就會拋 RuntimeError。
@@ -114,7 +114,7 @@ class TestLedHardwareSmoke:
 
     def test_led_grant_indicate_without_error(self) -> None:
         """
-        LED.indicate(success=True) 執行 _SMOKE_DURATION_S 秒不拋例外。
+        LED.indicate(success=True) 執行 _SMOKE_DURATION_S 秒不拋例外。.
 
         在真實硬體上：綠燈會短暫亮起然後熄滅。
         CI 只驗證不拋例外；肉眼觀察確認燈有亮。
@@ -129,7 +129,7 @@ class TestLedHardwareSmoke:
 
     def test_led_deny_indicate_without_error(self) -> None:
         """
-        LED.indicate(success=False) 執行 _SMOKE_DURATION_S 秒不拋例外。
+        LED.indicate(success=False) 執行 _SMOKE_DURATION_S 秒不拋例外。.
 
         在真實硬體上：紅燈會短暫亮起然後熄滅。
         """
@@ -148,10 +148,10 @@ class TestLedHardwareSmoke:
 
 
 class TestBuzzerHardwareSmoke:
-    """Buzzer 在真實 Jetson GPIO 上的基本可用性。"""
+    """Buzzer 在真實 Jetson GPIO 上的基本可用性。."""
 
     def test_buzzer_initializes_without_error(self) -> None:
-        """Buzzer() 初始化不拋例外。"""
+        """Buzzer() 初始化不拋例外。."""
         from src.buzzer import Buzzer
 
         buz = Buzzer()
@@ -159,7 +159,7 @@ class TestBuzzerHardwareSmoke:
 
     def test_buzzer_single_beep_without_error(self) -> None:
         """
-        Buzzer._beep(_SMOKE_DURATION_S) 執行不拋例外。
+        Buzzer._beep(_SMOKE_DURATION_S) 執行不拋例外。.
 
         在真實硬體上：會聽到一聲短促的嗶聲。
         """
@@ -178,11 +178,11 @@ class TestBuzzerHardwareSmoke:
 
 
 class TestActuatorHardwareSmoke:
-    """ActuatorController 在真實硬體上的最短可用性驗證。"""
+    """ActuatorController 在真實硬體上的最短可用性驗證。."""
 
     def test_deny_access_sequence_without_error(self) -> None:
         """
-        actuator.deny_access() 在真實硬體上執行不拋例外。
+        actuator.deny_access() 在真實硬體上執行不拋例外。.
 
         覆蓋整條 ActuatorController → LED → GPIO 鏈的初始化和操作。
         紅燈應短暫亮起；_DENY_LED_S 預設 2 秒太長，用 patch 縮短。
@@ -200,7 +200,7 @@ class TestActuatorHardwareSmoke:
 
     def test_actuator_cleanup_without_error(self) -> None:
         """
-        actuator.cleanup() 在真實硬體上不拋例外。
+        actuator.cleanup() 在真實硬體上不拋例外。.
 
         這是 CAPSTONE demo Ctrl-C 場景的最直接驗證：
         cleanup() 把所有 GPIO pin 還原到 LOW 並釋放資源。
@@ -217,11 +217,11 @@ class TestActuatorHardwareSmoke:
 
 
 class TestHcSr04HardwareSmoke:
-    """HC-SR04 在真實 Jetson GPIO 上的基本可用性。"""
+    """HC-SR04 在真實 Jetson GPIO 上的基本可用性。."""
 
     def test_hcsr04_initializes_without_error(self) -> None:
         """
-        HcSr04() 初始化不拋例外。
+        HcSr04() 初始化不拋例外。.
 
         若 Capstone AI Door Lock GPIO overlay 未透過 jetson-io.py 套用，
         這裡會因 ECHO pin 無法設為 IN 模式而拋 RuntimeError。
@@ -233,7 +233,7 @@ class TestHcSr04HardwareSmoke:
 
     def test_hcsr04_measure_distance_returns_float(self) -> None:
         """
-        HcSr04._measure_distance() 回傳 float 值（inf 或正數）。
+        HcSr04._measure_distance() 回傳 float 值（inf 或正數）。.
 
         在真實硬體上：若感測器接線正確，應回傳有限距離值。
         回傳 inf 代表逾時（可能是無人在前方），仍算 pass。

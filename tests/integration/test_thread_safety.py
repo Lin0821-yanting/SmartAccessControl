@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Yanting Lin, henrytsai
 # Tatung University — I4210 AI實務專題
-"""tests/integration/test_thread_safety.py — IT-6
+"""tests/integration/test_thread_safety.py — IT-6.
 
 Integration test: ActuatorController._lock (RLock) 執行緒安全。
 
@@ -60,11 +60,12 @@ from src.actuator_controller import ActuatorController
 
 def _make_tracked_actuator(delay: float = 0.05) -> tuple[ActuatorController, list, threading.Event]:
     """
-    建立一個真實 ActuatorController，其 LED mock 會：
+    建立一個真實 ActuatorController，其 LED mock 會：.
+
       1. 把 "START" 記錄到 call_log
       2. 設置 entered_event（通知測試執行緒「第一個方法已進入」）
       3. sleep delay 秒（模擬真實硬體佔用鎖的時間）
-      4. 把 "END" 記錄到 call_log
+      4. 把 "END" 記錄到 call_log.
 
     回傳 (actuator, call_log, entered_event)。
     """
@@ -97,13 +98,13 @@ def _make_tracked_actuator(delay: float = 0.05) -> tuple[ActuatorController, lis
 
 
 class TestSameMethodConcurrency:
-    """兩個並發的相同 actuator 方法必須序列化執行。"""
+    """兩個並發的相同 actuator 方法必須序列化執行。."""
 
     def test_two_concurrent_deny_calls_serialize(self) -> None:
         """
-        t1 持有 _lock 執行 deny_access() 期間，t2 被阻擋。
-        t1 釋放 _lock 後，t2 才能開始執行。
+        t1 持有 _lock 執行 deny_access() 期間，t2 被阻擋。.
 
+        t1 釋放 _lock 後，t2 才能開始執行。
         預期 call_log：["START", "END", "START", "END"]（序列化）
         拒絕 call_log：["START", "START", "END", "END"]（交錯 → RLock 失效）
         """
@@ -124,9 +125,7 @@ class TestSameMethodConcurrency:
         )
 
     def test_two_concurrent_alert_unknown_calls_serialize(self) -> None:
-        """
-        連續兩次 alert_unknown() 的 LED 呼叫必須序列化。
-        """
+        """連續兩次 alert_unknown() 的 LED 呼叫必須序列化。."""
         actuator, call_log, entered = _make_tracked_actuator(delay=0.05)
 
         with patch("time.sleep"):  # 抑制 _multi_beep 的 inter-beep sleep
@@ -155,12 +154,11 @@ class TestSameMethodConcurrency:
 
 
 class TestDifferentMethodConcurrency:
-    """GRANT 執行中，並發的 DENY 必須等 GRANT 完成後才開始。"""
+    """GRANT 執行中，並發的 DENY 必須等 GRANT 完成後才開始。."""
 
     def test_deny_waits_for_ongoing_grant(self) -> None:
         """
-        t1 執行 grant_access()（持有 _lock）時，
-        t2 執行 deny_access() 必須被阻擋。
+        t1 執行 grant_access()（持有 _lock）時，t2 執行 deny_access() 必須被阻擋。.
 
         驗證：call_log 中不會出現 ["START", "START", ...] 的模式。
         """
@@ -182,9 +180,7 @@ class TestDifferentMethodConcurrency:
         )
 
     def test_unknown_alert_waits_for_ongoing_deny(self) -> None:
-        """
-        DENY 執行中，後續 UNKNOWN 必須等待，不能打斷 DENY 的紅燈序列。
-        """
+        """DENY 執行中，後續 UNKNOWN 必須等待，不能打斷 DENY 的紅燈序列。."""
         actuator, call_log, entered = _make_tracked_actuator(delay=0.05)
 
         with patch("time.sleep"):
@@ -212,13 +208,10 @@ class TestDifferentMethodConcurrency:
 
 
 class TestNoDroppedOperations:
-    """並發呼叫都必須完整執行，不能因鎖競爭而被略過。"""
+    """並發呼叫都必須完整執行，不能因鎖競爭而被略過。."""
 
     def test_all_concurrent_calls_complete(self) -> None:
-        """
-        5 個執行緒同時呼叫 deny_access()，
-        所有 5 次 LED.indicate() 都必須完整執行（不能有呼叫被吞掉）。
-        """
+        """5 個執行緒並發呼叫 deny_access()，所有 5 次 LED.indicate() 必須完整執行."""
         call_log: list[str] = []
         lock = threading.Lock()
 
@@ -234,15 +227,15 @@ class TestNoDroppedOperations:
 
         actuator = ActuatorController(led=mock_led, buzzer=MagicMock(), servo=MagicMock())
 
-        _N = 5
-        threads = [threading.Thread(target=actuator.deny_access) for _ in range(_N)]
+        _n = 5
+        threads = [threading.Thread(target=actuator.deny_access) for _ in range(_n)]
         for t in threads:
             t.start()
         for t in threads:
             t.join(timeout=2.0)
 
-        assert call_log.count("START") == _N, f"預期 {_N} 次 START，實際 {call_log.count('START')}"
-        assert call_log.count("END") == _N, f"預期 {_N} 次 END，實際 {call_log.count('END')}"
+        assert call_log.count("START") == _n, f"預期 {_n} 次 START，實際 {call_log.count('START')}"
+        assert call_log.count("END") == _n, f"預期 {_n} 次 END，實際 {call_log.count('END')}"
         # 序列化：START 和 END 必須交替出現，不能有連續兩個 START
         for i in range(0, len(call_log) - 1, 2):
             assert call_log[i] == "START" and call_log[i + 1] == "END", (

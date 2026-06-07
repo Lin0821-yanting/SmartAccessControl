@@ -11,6 +11,7 @@ Run with:
 from __future__ import annotations
 
 import json
+from typing import ClassVar
 from unittest.mock import MagicMock
 
 import pytest
@@ -30,7 +31,7 @@ from src.mqtt_publisher import (
 
 @pytest.fixture()
 def mock_client() -> MagicMock:
-    """A mock paho Client with publish() returning a success MagicMock."""
+    """Return a mock paho Client with publish() returning a success MagicMock."""
     client = MagicMock()
     result = MagicMock()
     result.rc = 0  # MQTT_ERR_SUCCESS
@@ -135,7 +136,7 @@ class TestPublishLowLevel:
 
 
 class TestPublishEvent:
-    _BASE_KWARGS = dict(
+    _BASE_KWARGS: ClassVar[dict] = dict(
         decision="GRANT",
         identity="alice",
         similarity=0.921,
@@ -226,7 +227,7 @@ class TestPublishStatus:
 
 
 class TestPublishHeartbeat:
-    _BASE_KWARGS = dict(
+    _BASE_KWARGS: ClassVar[dict] = dict(
         fps=18.5,
         cpu_temp_c=52.3,
         ram_used_gb=2.1,

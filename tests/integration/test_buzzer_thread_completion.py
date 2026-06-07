@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Yanting Lin, henrytsai
 # Tatung University — I4210 AI實務專題
-"""tests/integration/test_buzzer_thread_completion.py — IT-2
+"""tests/integration/test_buzzer_thread_completion.py — IT-2.
 
 Integration test: Buzzer GPIO pin 電位序列與方法完成性。
 
@@ -115,7 +115,7 @@ def _make_liveness(is_live: bool = True, score: float = 0.88) -> MagicMock:
 @pytest.fixture()
 def gpio_mock():
     """
-    回傳 conftest 所設定的共享 Jetson.GPIO mock。
+    回傳 conftest 所設定的共享 Jetson.GPIO mock。.
 
     在每個測試的前後重置 ``output`` 的呼叫記錄，
     避免不同測試間的 call_args_list 互相污染。
@@ -129,7 +129,7 @@ def gpio_mock():
 @pytest.fixture()
 def real_buzzer(gpio_mock):
     """
-    真實 Buzzer 實例。
+    真實 Buzzer 實例。.
 
     ``Buzzer.__init__()`` 會呼叫 ``GPIO.setmode / setup``（被 mock 掉），
     之後 ``_beep()`` 呼叫的 ``GPIO.output()`` 會被 gpio_mock 記錄下來。
@@ -140,10 +140,11 @@ def real_buzzer(gpio_mock):
 @pytest.fixture()
 def actuator(real_buzzer):
     """
-    真實 ActuatorController：
+    真實 ActuatorController：.
+
       - real_buzzer  → GPIO.output 呼叫可被追蹤
       - mock LED     → indicate() 不執行真實 GPIO，LED thread 即時完成
-      - mock Servo   → unlock_then_relock() 不執行真實 PWM
+      - mock Servo   → unlock_then_relock() 不執行真實 PWM.
     """
     return ActuatorController(
         led=MagicMock(),
@@ -159,7 +160,7 @@ def actuator(real_buzzer):
 
 def _buzzer_output_calls(gpio_mock) -> list:
     """
-    過濾出所有對 BUZZER_PIN 的 GPIO.output() 呼叫。
+    過濾出所有對 BUZZER_PIN 的 GPIO.output() 呼叫。.
 
     buzzer._beep() 呼叫模式：
         GPIO.output(BUZZER_PIN, HIGH)
@@ -182,33 +183,34 @@ def _buzzer_output_calls(gpio_mock) -> list:
 
 
 class TestAlertUnknownGpioSequence:
-    """alert_unknown() 直接呼叫 → GPIO 電位序列正確。"""
+    """alert_unknown() 直接呼叫 → GPIO 電位序列正確。."""
 
     @pytest.fixture(autouse=True)
     def _run_alert(self, actuator, gpio_mock):
         """
-        在每個測試前執行 alert_unknown()。
+        在每個測試前執行 alert_unknown()。.
+
         patch("time.sleep") 同時抑制：
           - buzzer._beep() 裡的 time.sleep(duration)
-          - _multi_beep() 裡的 time.sleep(_BEEP_OFF_S)
+          - _multi_beep() 裡的 time.sleep(_BEEP_OFF_S).
         """
         with patch("time.sleep"):
             actuator.alert_unknown()
 
     def test_total_output_calls_for_buzzer_pin(self, gpio_mock) -> None:
-        """BUZZER_PIN 的 GPIO.output 呼叫總次數必須是 HIGH+LOW 各 3 次。"""
+        """BUZZER_PIN 的 GPIO.output 呼叫總次數必須是 HIGH+LOW 各 3 次。."""
         calls = _buzzer_output_calls(gpio_mock)
         assert len(calls) == _EXPECTED_OUTPUT_CALLS
 
     def test_high_pulse_count(self, gpio_mock) -> None:
-        """HIGH 脈衝必須恰好 _ALERT_BEEPS（3）次。"""
+        """HIGH 脈衝必須恰好 _ALERT_BEEPS（3）次。."""
         calls = _buzzer_output_calls(gpio_mock)
         high_calls = [c for c in calls if c.args[1] == gpio_mock.HIGH]
         assert len(high_calls) == _ALERT_BEEPS
 
     def test_pin_ends_in_low_state(self, gpio_mock) -> None:
         """
-        最後一次對 BUZZER_PIN 的 GPIO.output 必須是 LOW。
+        最後一次對 BUZZER_PIN 的 GPIO.output 必須是 LOW。.
 
         這是 daemon=False 修正後的核心保證：
         若執行緒在 _beep() 中間被殺，最後的 LOW 永遠不會執行，
@@ -219,7 +221,7 @@ class TestAlertUnknownGpioSequence:
 
     def test_each_beep_alternates_high_then_low(self, gpio_mock) -> None:
         """
-        每對相鄰呼叫必須是 HIGH → LOW 順序。
+        每對相鄰呼叫必須是 HIGH → LOW 順序。.
 
         驗證 _beep() 的內部序列沒有被打亂（例如兩個 HIGH 連續出現）。
         """
@@ -243,7 +245,7 @@ class TestAlertUnknownGpioSequence:
 
 
 class TestAlertSpoofGpioSequence:
-    """alert_spoof() 直接呼叫 → GPIO 電位序列與 UNKNOWN 相同。"""
+    """alert_spoof() 直接呼叫 → GPIO 電位序列與 UNKNOWN 相同。."""
 
     @pytest.fixture(autouse=True)
     def _run_alert(self, actuator, gpio_mock):
@@ -278,7 +280,7 @@ class TestAlertSpoofGpioSequence:
 
 
 class TestAlertCompletionTiming:
-    """alert 方法必須在 2.5 秒內完成（真實 sleep，不 patch）。"""
+    """alert 方法必須在 2.5 秒內完成（真實 sleep，不 patch）。."""
 
     _TIMEOUT_S = 2.5
 
@@ -320,10 +322,11 @@ class TestAlertCompletionTiming:
 @pytest.fixture()
 def orc_with_real_buzzer(real_buzzer, gpio_mock):
     """
-    Orchestrator：
+    Orchestrator：.
+
       - 真實 DecisionEngine（三幀累積邏輯）
       - 真實 ActuatorController（真實 Buzzer，mock LED/Servo）
-      - mock AI pipeline、sensor、publisher
+      - mock AI pipeline、sensor、publisher.
     """
     return Orchestrator(
         detector=MagicMock(),
@@ -342,12 +345,12 @@ def orc_with_real_buzzer(real_buzzer, gpio_mock):
 
 
 class TestOrchestratorDrivesRealBuzzer:
-    """Orchestrator._tick() 分派 UNKNOWN → 真實 Buzzer 走完 GPIO 序列。"""
+    """Orchestrator._tick() 分派 UNKNOWN → 真實 Buzzer 走完 GPIO 序列。."""
 
     _THREAD_WAIT_S = 1.5  # 真實 0.90 s 序列 + 執行緒排程餘量
 
     def _tick_unknown(self, orc: Orchestrator) -> None:
-        """送出一幀 UNKNOWN 條件（臉不在 DB）。"""
+        """送出一幀 UNKNOWN 條件（臉不在 DB）。."""
         face = _make_face()
         orc._sensor._measure_distance.return_value = 30.0
         orc._detector.detect.return_value = [face]
@@ -360,7 +363,7 @@ class TestOrchestratorDrivesRealBuzzer:
         self, orc_with_real_buzzer: Orchestrator, gpio_mock
     ) -> None:
         """
-        _tick() → UNKNOWN 決策 → 執行緒 → alert_unknown() → pin 最後是 LOW。
+        _tick() → UNKNOWN 決策 → 執行緒 → alert_unknown() → pin 最後是 LOW。.
 
         這是 IT-2 最接近生產場景的測試：
         模擬真實的 Orchestrator 在偵測到陌生人臉後分派 alert，
@@ -378,7 +381,7 @@ class TestOrchestratorDrivesRealBuzzer:
     def test_unknown_thread_produces_correct_beep_count(
         self, orc_with_real_buzzer: Orchestrator, gpio_mock
     ) -> None:
-        """_tick() 觸發的 alert_unknown() 必須產生恰好 _ALERT_BEEPS 次 HIGH 脈衝。"""
+        """_tick() 觸發的 alert_unknown() 必須產生恰好 _ALERT_BEEPS 次 HIGH 脈衝。."""
         self._tick_unknown(orc_with_real_buzzer)
         time.sleep(self._THREAD_WAIT_S)
 

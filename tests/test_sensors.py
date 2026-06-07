@@ -475,9 +475,11 @@ class TestHCSR04:
         """wait_for_person() must loop until _confirmed_near() returns True."""
         with patch("time.sleep"):
             sensor = HcSr04(trigger_pin=31, echo_pin=15)
-        with patch.object(sensor, "_confirmed_near", side_effect=[False, False, True]):
-            with patch("time.sleep") as mock_sleep:
-                sensor.wait_for_person()
+        with (
+            patch.object(sensor, "_confirmed_near", side_effect=[False, False, True]),
+            patch("time.sleep") as mock_sleep,
+        ):
+            sensor.wait_for_person()
         assert mock_sleep.call_count == 2
         mock_sleep.assert_called_with(POLL_INTERVAL_S)
 

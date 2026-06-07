@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Yanting Lin, henrytsai
 # Tatung University — I4210 AI實務專題
-"""tests/integration/test_orchestrator_pipeline.py — IT-3
+"""tests/integration/test_orchestrator_pipeline.py — IT-3.
 
 Integration test: Orchestrator 跨幀狀態機行為。
 
@@ -90,7 +90,7 @@ def _make_liveness(is_live: bool = True, score: float = 0.88) -> MagicMock:
 
 @pytest.fixture()
 def engine() -> DecisionEngine:
-    """真實 DecisionEngine，使用生產參數（threshold=0.85，required=3）。"""
+    """真實 DecisionEngine，使用生產參數（threshold=0.85，required=3）。."""
     return DecisionEngine(similarity_threshold=0.85, required_frames=3)
 
 
@@ -105,13 +105,13 @@ def ai_mocks() -> dict:
 
 @pytest.fixture()
 def publisher() -> MagicMock:
-    """Mock MqttPublisher，用於驗證 MQTT 呼叫序列。"""
+    """Mock MqttPublisher，用於驗證 MQTT 呼叫序列。."""
     return MagicMock()
 
 
 @pytest.fixture()
 def actuator() -> MagicMock:
-    """Mock ActuatorController — 讓 grant_access 等方法即時完成。"""
+    """Mock ActuatorController — 讓 grant_access 等方法即時完成。."""
     return MagicMock()
 
 
@@ -119,7 +119,7 @@ def actuator() -> MagicMock:
 def orc(
     engine: DecisionEngine, actuator: MagicMock, ai_mocks: dict, publisher: MagicMock
 ) -> Orchestrator:
-    """Orchestrator：真實 engine，其餘全 mock。"""
+    """Orchestrator：真實 engine，其餘全 mock。."""
     return Orchestrator(
         detector=ai_mocks["detector"],
         recognizer=ai_mocks["recognizer"],
@@ -143,7 +143,7 @@ def _tick_matching(
     name: str = "alice",
     similarity: float = 0.92,
 ) -> None:
-    """送出一幀「完全符合條件」的訊號（high similarity, live, in DB）。"""
+    """送出一幀「完全符合條件」的訊號（high similarity, live, in DB）。."""
     ai_mocks["detector"].detect.return_value = [_make_face()]
     ai_mocks["recognizer"].match.return_value = _make_recog(
         name=name, similarity=similarity, authorized=True
@@ -154,7 +154,7 @@ def _tick_matching(
 
 
 def _tick_deny(orc: Orchestrator, ai_mocks: dict) -> None:
-    """送出一幀 DENY 訊號（similarity < threshold，但 face in DB）。"""
+    """送出一幀 DENY 訊號（similarity < threshold，但 face in DB）。."""
     ai_mocks["detector"].detect.return_value = [_make_face()]
     ai_mocks["recognizer"].match.return_value = _make_recog(similarity=0.70, authorized=True)
     ai_mocks["antispoof"].predict.return_value = _make_liveness(is_live=True)
@@ -163,7 +163,7 @@ def _tick_deny(orc: Orchestrator, ai_mocks: dict) -> None:
 
 
 def _tick_unknown(orc: Orchestrator, ai_mocks: dict) -> None:
-    """送出一幀 UNKNOWN 訊號（face not in DB）。"""
+    """送出一幀 UNKNOWN 訊號（face not in DB）。."""
     ai_mocks["detector"].detect.return_value = [_make_face()]
     ai_mocks["recognizer"].match.return_value = _make_recog(similarity=0.50, authorized=False)
     ai_mocks["antispoof"].predict.return_value = _make_liveness(is_live=True)
@@ -172,7 +172,7 @@ def _tick_unknown(orc: Orchestrator, ai_mocks: dict) -> None:
 
 
 def _tick_spoof(orc: Orchestrator, ai_mocks: dict) -> None:
-    """送出一幀 SPOOF 訊號（liveness 失敗）。"""
+    """送出一幀 SPOOF 訊號（liveness 失敗）。."""
     ai_mocks["detector"].detect.return_value = [_make_face()]
     ai_mocks["recognizer"].match.return_value = _make_recog()
     ai_mocks["antispoof"].predict.return_value = _make_liveness(is_live=False, score=0.20)
@@ -181,7 +181,7 @@ def _tick_spoof(orc: Orchestrator, ai_mocks: dict) -> None:
 
 
 def _send_grant(orc: Orchestrator, ai_mocks: dict, name: str = "alice") -> None:
-    """送 3 幀讓 engine 到達 GRANT，並等 actuator thread 完成。"""
+    """送 3 幀讓 engine 到達 GRANT，並等 actuator thread 完成。."""
     for _ in range(3):
         _tick_matching(orc, ai_mocks, name=name)
     time.sleep(0.05)  # actuator mock 即時，0.05 s 足以讓 thread 排程完成
@@ -196,13 +196,13 @@ def _send_grant(orc: Orchestrator, ai_mocks: dict, name: str = "alice") -> None:
 
 
 class TestFrameCounterResetAfterGrant:
-    """GRANT 後計數器歸零 → 需再累積 3 幀。"""
+    """GRANT 後計數器歸零 → 需再累積 3 幀。."""
 
     def test_engine_counter_is_zero_immediately_after_grant(
         self, orc: Orchestrator, ai_mocks: dict, engine: DecisionEngine
     ) -> None:
         """
-        第 3 幀後 engine.consecutive_frames 必須是 0。
+        第 3 幀後 engine.consecutive_frames 必須是 0。.
 
         DecisionEngine.evaluate() 在 GRANT 後呼叫 _reset()，
         這個測試確認 Orchestrator 正確驅動了這個重置。
@@ -214,7 +214,7 @@ class TestFrameCounterResetAfterGrant:
         self, orc: Orchestrator, ai_mocks: dict, actuator: MagicMock
     ) -> None:
         """
-        GRANT 冷卻期間第 4 幀被 cooldown 攔截，不會呼叫 grant_access。
+        GRANT 冷卻期間第 4 幀被 cooldown 攔截，不會呼叫 grant_access。.
 
         此測試驗證 cooldown 機制由真實 GRANT 流程（非手動設定 _grant_until）
         自動觸發，並確實阻擋後續觸發。
@@ -231,7 +231,7 @@ class TestFrameCounterResetAfterGrant:
         self, orc: Orchestrator, ai_mocks: dict, actuator: MagicMock
     ) -> None:
         """
-        第 1-3 幀 → GRANT（第一次），冷卻過後第 4-6 幀 → GRANT（第二次）。
+        第 1-3 幀 → GRANT（第一次），冷卻過後第 4-6 幀 → GRANT（第二次）。.
 
         測試方式：手動設定 _grant_until=0 讓冷卻立刻結束，
         然後送 3 幀確認第二次 GRANT 觸發。
@@ -250,9 +250,7 @@ class TestFrameCounterResetAfterGrant:
     def test_two_frames_after_cooldown_expiry_do_not_retrigger(
         self, orc: Orchestrator, ai_mocks: dict, actuator: MagicMock
     ) -> None:
-        """
-        冷卻到期後只送 2 幀，不應觸發 GRANT（需要 3 幀）。
-        """
+        """冷卻到期後只送 2 幀，不應觸發 GRANT（需要 3 幀）。."""
         _send_grant(orc, ai_mocks)
         orc._grant_until = 0.0
         actuator.grant_access.reset_mock()
@@ -277,14 +275,12 @@ class TestFrameCounterResetAfterGrant:
 
 
 class TestInterruptedAccumulation:
-    """中斷累積後需重新計數 3 幀。"""
+    """中斷累積後需重新計數 3 幀。."""
 
     def test_deny_interrupts_accumulation(
         self, orc: Orchestrator, ai_mocks: dict, actuator: MagicMock
     ) -> None:
-        """
-        2 幀匹配 → 1 幀 DENY → 2 幀匹配 → IGNORE（共 5 幀，未達第 6 幀的 GRANT）。
-        """
+        """2 幀匹配 → 1 幀 DENY → 2 幀匹配 → IGNORE（共 5 幀，未達第 6 幀的 GRANT）。."""
         for _ in range(2):
             _tick_matching(orc, ai_mocks)  # 幀 1、2：累積中
         _tick_deny(orc, ai_mocks)  # 幀 3：DENY → counter 重置為 0
@@ -297,7 +293,7 @@ class TestInterruptedAccumulation:
     def test_unknown_interrupts_accumulation(
         self, orc: Orchestrator, ai_mocks: dict, actuator: MagicMock
     ) -> None:
-        """2 幀匹配 → 1 幀 UNKNOWN → 2 幀匹配 → 仍 IGNORE。"""
+        """2 幀匹配 → 1 幀 UNKNOWN → 2 幀匹配 → 仍 IGNORE。."""
         for _ in range(2):
             _tick_matching(orc, ai_mocks)
         _tick_unknown(orc, ai_mocks)  # counter 重置
@@ -310,7 +306,7 @@ class TestInterruptedAccumulation:
     def test_spoof_interrupts_accumulation(
         self, orc: Orchestrator, ai_mocks: dict, actuator: MagicMock
     ) -> None:
-        """2 幀匹配 → 1 幀 SPOOF → 2 幀匹配 → 仍 IGNORE。"""
+        """2 幀匹配 → 1 幀 SPOOF → 2 幀匹配 → 仍 IGNORE。."""
         for _ in range(2):
             _tick_matching(orc, ai_mocks)
         _tick_spoof(orc, ai_mocks)  # counter 重置
@@ -323,9 +319,7 @@ class TestInterruptedAccumulation:
     def test_three_frames_after_interruption_do_grant(
         self, orc: Orchestrator, ai_mocks: dict, actuator: MagicMock
     ) -> None:
-        """
-        中斷後再送 3 幀，第 3 幀仍可觸發 GRANT（驗證重新累積有效）。
-        """
+        """中斷後再送 3 幀，第 3 幀仍可觸發 GRANT（驗證重新累積有效）。."""
         _tick_matching(orc, ai_mocks)  # 幀 1：累積 1
         _tick_deny(orc, ai_mocks)  # 幀 2：DENY，counter → 0
         for _ in range(3):
@@ -345,11 +339,11 @@ class TestInterruptedAccumulation:
 
 
 class TestCooldownMechanism:
-    """Cooldown 由真實 GRANT 流程自動設定並生效。"""
+    """Cooldown 由真實 GRANT 流程自動設定並生效。."""
 
     def test_grant_tick_sets_grant_until_in_future(self, orc: Orchestrator, ai_mocks: dict) -> None:
         """
-        3 幀 → GRANT 後，orc._grant_until 必須大於當前時間。
+        3 幀 → GRANT 後，orc._grant_until 必須大於當前時間。.
 
         這確認 _act(Decision.GRANT) 確實執行了：
             self._grant_until = time.monotonic() + _GRANT_COOLDOWN_S
@@ -363,7 +357,7 @@ class TestCooldownMechanism:
         self, orc: Orchestrator, ai_mocks: dict
     ) -> None:
         """
-        GRANT 後立即的第 4 幀 → detector 不被呼叫（cooldown 中）。
+        GRANT 後立即的第 4 幀 → detector 不被呼叫（cooldown 中）。.
 
         這測試了完整的自動觸發路徑，而非手動設定 _grant_until。
         """
@@ -377,9 +371,7 @@ class TestCooldownMechanism:
         ai_mocks["detector"].detect.assert_not_called()
 
     def test_expired_cooldown_allows_detection(self, orc: Orchestrator, ai_mocks: dict) -> None:
-        """
-        GRANT 後強制讓 cooldown 到期，下一幀 detector 應被呼叫。
-        """
+        """GRANT 後強制讓 cooldown 到期，下一幀 detector 應被呼叫。."""
         _send_grant(orc, ai_mocks)
         orc._grant_until = 0.0  # 強制 cooldown 到期
         ai_mocks["detector"].detect.reset_mock()
@@ -403,22 +395,18 @@ class TestCooldownMechanism:
 
 
 class TestAutoRelockTimer:
-    """Auto-relock Timer 到期後發布 locked 狀態。"""
+    """Auto-relock Timer 到期後發布 locked 狀態。."""
 
     _SHORT_COOLDOWN_S = 0.05
 
     def test_door_state_is_unlocked_after_grant(self, orc: Orchestrator, ai_mocks: dict) -> None:
-        """
-        3 幀 → GRANT 後，orc._door_state 應該是 "unlocked"。
-        _set_door_state("unlocked", identity) 在 _act() 中同步執行。
-        """
+        """3 幀 → GRANT 後 orc._door_state 應為 "unlocked"；由 _act() 同步設定."""
         _send_grant(orc, ai_mocks)
         assert orc._door_state == "unlocked"
 
     def test_auto_relock_timer_publishes_locked(self, ai_mocks: dict, publisher: MagicMock) -> None:
         """
-        _GRANT_COOLDOWN_S 到期後，threading.Timer 觸發，
-        publish_status(door_state="locked") 被呼叫。
+        _GRANT_COOLDOWN_S 到期後 Timer 觸發 publish_status("locked").
 
         patch _GRANT_COOLDOWN_S = 0.05 讓測試在 < 1 s 內完成。
         """
@@ -449,9 +437,7 @@ class TestAutoRelockTimer:
     def test_publish_status_unlocked_called_before_locked(
         self, ai_mocks: dict, publisher: MagicMock
     ) -> None:
-        """
-        狀態轉換順序必須是 unlocked → locked（不能反向）。
-        """
+        """狀態轉換順序必須是 unlocked → locked（不能反向）。."""
         with patch("src.orchestrator._GRANT_COOLDOWN_S", self._SHORT_COOLDOWN_S):
             short_orc = Orchestrator(
                 detector=ai_mocks["detector"],
@@ -486,13 +472,13 @@ class TestAutoRelockTimer:
 
 
 class TestMqttEventSequence:
-    """publish_event 的 consecutive_frames 欄位反映真實計數。"""
+    """publish_event 的 consecutive_frames 欄位反映真實計數。."""
 
     def test_consecutive_frames_increments_across_ticks(
         self, orc: Orchestrator, ai_mocks: dict, publisher: MagicMock
     ) -> None:
         """
-        幀 1 的 consecutive_frames = 1，幀 2 = 2。
+        幀 1 的 consecutive_frames = 1，幀 2 = 2。.
 
         說明：DecisionEngine 在 IGNORE 路徑（累積中）不重置計數，
         所以呼叫 publish_event 時的 engine.consecutive_frames 反映真實累積。
@@ -508,7 +494,7 @@ class TestMqttEventSequence:
         self, orc: Orchestrator, ai_mocks: dict, publisher: MagicMock
     ) -> None:
         """
-        第 3 幀（GRANT）的 consecutive_frames = 0。
+        第 3 幀（GRANT）的 consecutive_frames = 0。.
 
         DecisionEngine._reset() 在 evaluate() 回傳 GRANT 時就執行，
         所以 publish_event_from() 讀到的 engine.consecutive_frames 已是 0。
@@ -523,7 +509,7 @@ class TestMqttEventSequence:
     def test_deny_event_has_correct_decision_field(
         self, orc: Orchestrator, ai_mocks: dict, publisher: MagicMock
     ) -> None:
-        """2 幀累積後送 1 幀 DENY → 最後一個 event 的 decision = 'DENY'。"""
+        """2 幀累積後送 1 幀 DENY → 最後一個 event 的 decision = 'DENY'。."""
         for _ in range(2):
             _tick_matching(orc, ai_mocks)
         _tick_deny(orc, ai_mocks)
