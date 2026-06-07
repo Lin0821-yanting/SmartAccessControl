@@ -110,6 +110,9 @@ jobs:
       - name: bandit SAST
         run: bandit -r src -c pyproject.toml
 
+      - name: Upgrade pip before audit     
+        run: pip install --upgrade pip
+
       - name: pip-audit dependency CVE scan
         # pip-audit needs the actual package list; install runtime deps first.
         # Jetson-specific packages (torch, tensorrt) are excluded from pyproject.toml
