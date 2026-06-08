@@ -188,7 +188,7 @@ jobs:
     needs: build
     # Only fire on main pushes.  PRs validate via lint+test+build only.
     # This prevents every PR from consuming the physical Jetson runner.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v5
 
