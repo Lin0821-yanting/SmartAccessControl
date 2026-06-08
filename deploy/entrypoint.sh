@@ -56,7 +56,7 @@ else
     fi
 
     PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-    trtexec \
+    /usr/src/tensorrt/targets/aarch64-linux-gnu/bin/trtexec \
         --onnx="${YOLO_ONNX}" \
         --saveEngine="${YOLO_ENGINE}" \
         --fp16 \
