@@ -3,10 +3,8 @@
 #
 # Multi-stage Dockerfile for Smart Access Control on Jetson Orin Nano.
 #
-# Stage 1 (builder) — installs additional pip packages on top of the
-#   dustynv base.  The dustynv image ships torch, torchvision, cv2,
-#   onnxruntime, and tensorrt already; we only add paho-mqtt, gpiod,
-#   and pyyaml here.
+# Stage 1 (builder) — installs all project deps via pdm export from pyproject.toml.
+#   pyproject.toml is the single source of truth (Lab10/HW6 standard).
 #
 # Stage 2 (runtime) — copies only the installed packages + app code
 #   into a clean copy of the same base, keeping the final image lean.
@@ -25,19 +23,36 @@
 # ── Stage 1: builder ─────────────────────────────────────────────────────────
 FROM --platform=linux/arm64 dustynv/pytorch:2.7-r36.4.0 AS builder
 
-# Install only what is NOT already in the dustynv base image.
-# --break-system-packages is required because the base image uses
-# the system Python (not a venv) and newer pip refuses to install
-# into it without this flag.
-RUN pip install \
-        "paho-mqtt>=2.0" \
-        "gpiod>=2.4.2" \
-        "pyyaml>=6.0" \
-        "opencv-python-headless>=4.8" \
+WORKDIR /build
+
+# Copy dependency files (pyproject.toml is the single source of truth).
+# pdm.lock pins exact versions to ensure reproducible builds.
+COPY pyproject.toml pdm.lock ./
+
+# Use pdm export to generate requirements.txt from pyproject.toml.
+# This is the Lab10/HW6 standard: pyproject.toml → pdm export → pip install.
+# After export, uninstall pdm so it doesn't ship in the final image.
+#
+# numpy==1.26.4 is pinned explicitly because ultralytics' transitive dep
+# (matplotlib) requests numpy>=2, which would clobber dustynv's numpy 1.x
+# and break torch's C extensions (compiled against numpy 1.x ABI).
+RUN pip install pdm \
+        --index-url https://pypi.org/simple \
+        --break-system-packages \
+        --no-cache-dir && \
+    pdm export \
+        --no-hashes \
+        --without dev,quality \
+        --output requirements.txt && \
+    pip uninstall -y pdm && \
+    pip install \
+        -r requirements.txt \
+        "numpy==1.26.4" \
     --index-url https://pypi.org/simple \
     --extra-index-url https://pypi.jetson-ai-lab.dev/jp6/cu126 \
     --break-system-packages \
-    --no-cache-dir
+    --no-cache-dir && \
+    rm -f requirements.txt pyproject.toml pdm.lock
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM --platform=linux/arm64 dustynv/pytorch:2.7-r36.4.0 AS runtime
@@ -56,20 +71,9 @@ COPY --from=builder \
 # ── Application source code ───────────────────────────────────────────────────
 COPY src/        ./src/
 COPY configs/    ./configs/
-
-# ONNX weights are baked into the image so the container is self-contained.
-# TRT engines are NOT copied here — they are compiled by entrypoint.sh at
-# first startup and cached in a named volume (engine-cache).
-# COPY models/weights/ ./models/weights/
-
-# Enrollment face photos are NOT baked in; they are mounted as a volume at
-# runtime so new faces can be enrolled without rebuilding the image.
-# The scripts/ directory IS included so enroll.py can be run inside the container.
 COPY scripts/    ./scripts/
 
 # ── Runtime directories ────────────────────────────────────────────────────────
-# These will be bind-mounted or named volumes at compose time, but we create
-# them here so the container starts cleanly even without a mount.
 RUN mkdir -p /app/models/engines \
              /app/data/enrollment \
              /tmp
@@ -80,11 +84,8 @@ RUN chmod +x /entrypoint.sh
 
 # ── Environment ────────────────────────────────────────────────────────────────
 ENV PYTHONPATH=/app
-# MQTT_BROKER is overridden by docker-compose to the service name "mosquitto".
-# The default "localhost" allows running the container standalone for debugging.
 ENV MQTT_BROKER=mosquitto
 ENV MQTT_PORT=1883
-# Suppress GTK/EGL errors in headless SSH sessions (same fix as bare-Jetson dev).
 ENV DISPLAY=
 
 ENTRYPOINT ["/entrypoint.sh"]
