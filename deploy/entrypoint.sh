@@ -60,8 +60,8 @@ else
         --onnx="${YOLO_ONNX}" \
         --saveEngine="${YOLO_ENGINE}" \
         --fp16 \
-        --workspace=2048 \
-        --verbose=false
+        --memPoolSize=workspace:2048M \
+        --skipInference
 
     log "YOLOv8n-face engine compiled successfully."
 fi
