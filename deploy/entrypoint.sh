@@ -30,7 +30,7 @@ log "Checking ONNX model weights..."
 
 YOLO_ONNX="${WEIGHTS_DIR}/yolov8n-face.onnx"
 MOBILEFACENET_ONNX="${WEIGHTS_DIR}/MobileFaceNet.onnx"   # 大小寫注意
-MINIFASNET_ONNX="${WEIGHTS_DIR}/minifasnet_2.7_80x80_GRAY.onnx"
+MINIFASNET_ONNX="${WEIGHTS_DIR}/minifasnet.onnx"
 
 for f in "$YOLO_ONNX" "$MOBILEFACENET_ONNX" "$MINIFASNET_ONNX"; do
     [ -f "$f" ] || die "Required weight not found: $f
