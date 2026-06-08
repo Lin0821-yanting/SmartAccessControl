@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+# Copyright (c) 2026 GI104 henrytsai
+# Tatung University 14210 AI實務專題
+"""
+test_recognizer.py
+------------------
+Unit tests for src/recognition/recognizer.py
+使用 mock 隔離 onnxruntime 與 numpy 硬體依賴。
+"""
+
+import numpy as np
+import pytest
+from unittest.mock import MagicMock, patch, mock_open
+
+
+# ── Fixtures ──────────────────────────────────────────────────────────────────
+@pytest.fixture
+def mock_db(tmp_path):
+    """建立假的 face_db.npy。"""
+    db = {
+        "names": ["henry", "alice"],
+        "embeddings": np.array([
+            [1.0] + [0.0] * 127,   # henry
+            [0.0, 1.0] + [0.0] * 126,  # alice
+        ], dtype=np.float32),
+    }
+    db_path = tmp_path / "face_db.npy"
+    np.save(str(db_path), db)
+    return str(db_path)
+
+
+@pytest.fixture
+def mock_session():
+    """Mock onnxruntime InferenceSession。"""
+    session = MagicMock()
+    # 回傳 henry 的 embedding（norm 後接近 [1, 0, 0, ...]）
+    embedding = np.array([[10.0] + [0.0] * 127], dtype=np.float32)
+    session.run.return_value = [embedding]
+    return session
+
+
+@pytest.fixture
+def recognizer(mock_session, mock_db):
+    """建立 FaceRecognizer，mock 掉 onnxruntime。"""
+    with patch("onnxruntime.InferenceSession", return_value=mock_session):
+        from src.recognition.recognizer import FaceRecognizer
+        r = FaceRecognizer(onnx_path="fake.onnx", db_path=mock_db, threshold=0.85)
+    return r
+
+
+# ── Tests ─────────────────────────────────────────────────────────────────────
+class TestFaceRecognizer:
+
+    def test_load_db(self, recognizer):
+        """face_db 正確載入。"""
+        assert recognizer.names == ["henry", "alice"]
+        assert recognizer.embeddings.shape == (2, 128)
+
+    def test_get_embedding_normalized(self, recognizer):
+        """get_embedding 回傳 L2 正規化的 128-dim 向量。"""
+        import cv2
+        dummy = np.zeros((112, 112, 3), dtype=np.uint8)
+        emb = recognizer.get_embedding(dummy)
+        assert emb.shape == (128,)
+        assert abs(np.linalg.norm(emb) - 1.0) < 1e-5
+
+    def test_match_authorized(self, recognizer):
+        """相似度高於門檻時，回傳正確名稱且 authorized=True。"""
+        import cv2
+        dummy = np.zeros((112, 112, 3), dtype=np.uint8)
+        result = recognizer.match(dummy)
+        assert result.name == "henry"
+        assert result.authorized is True
+        assert result.similarity > 0.85
+
+    def test_match_unknown(self, mock_db):
+        """相似度低於門檻時，回傳 unknown 且 authorized=False。"""
+        session = MagicMock()
+        # 回傳與 alice 相似的 embedding
+        embedding = np.array([[0.0, 10.0] + [0.0] * 126], dtype=np.float32)
+        session.run.return_value = [embedding]
+
+        with patch("onnxruntime.InferenceSession", return_value=session):
+            from src.recognition.recognizer import FaceRecognizer
+            r = FaceRecognizer(onnx_path="fake.onnx", db_path=mock_db, threshold=0.99)
+
+        dummy = np.zeros((112, 112, 3), dtype=np.uint8)
+        result = r.match(dummy)
+        # threshold=0.99，任何結果都不會通過
+        assert result.authorized is False
+        assert result.name == "unknown"
+
+    def test_reload_db(self, recognizer, tmp_path):
+        """reload_db 可以動態更新授權名單。"""
+        new_db = {
+            "names": ["bob"],
+            "embeddings": np.array([[0.0] * 128], dtype=np.float32),
+        }
+        new_path = tmp_path / "new_db.npy"
+        np.save(str(new_path), new_db)
+        recognizer.reload_db(str(new_path))
+        assert recognizer.names == ["bob"]
