@@ -40,7 +40,6 @@ dependencies = [
     # the libgpiod backend — safe to install via pdm.
     "Jetson.GPIO>=2.1",
     "ultralytics>=8.4.60",
-    "gpiod>=2.4.2",
 ]
 
 [tool.pdm]
@@ -74,6 +73,7 @@ excludes = [
     "opencv-python", "opencv-python-headless",
     "onnxruntime", "onnxruntime-gpu",
     "tensorrt", "tensorrt-cu12",
+    "gpiod",
     # These three are the parents that drag in the whole CUDA 13 wheel set
     # as extras (`cuda-toolkit[cublas,cudart,...]`). Excluding the parents
     # is what actually prevents the transitive pull.
