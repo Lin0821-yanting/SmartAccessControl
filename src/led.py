@@ -21,7 +21,9 @@ RED_LED_HOLD_S: float = 2.0
 class LED:
     """GRANT/DENY indicator LEDs on the Jetson 40-pin header."""
 
-    def __init__(self, green_pin: int = GREEN_LED_PIN, red_pin: int = RED_LED_PIN) -> None:
+    def __init__(
+        self, green_pin: int = GREEN_LED_PIN, red_pin: int = RED_LED_PIN
+    ) -> None:
         """Initialise GPIO pins for green and red LEDs.
 
         Parameters

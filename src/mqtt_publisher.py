@@ -51,9 +51,9 @@ DEFAULT_BROKER_PORT: int = 1883
 DEFAULT_KEEPALIVE_SEC: int = 60
 
 # QoS levels per topic (matches proposal rationale)
-QOS_EVENTS: int = 0      # per-decision; tolerate drops, latency matters
-QOS_STATUS: int = 1      # door state; must be delivered
-QOS_HEARTBEAT: int = 0   # 1 Hz health; stale data is fine
+QOS_EVENTS: int = 0  # per-decision; tolerate drops, latency matters
+QOS_STATUS: int = 1  # door state; must be delivered
+QOS_HEARTBEAT: int = 0  # 1 Hz health; stale data is fine
 
 
 class MqttPublisher:
@@ -98,10 +98,12 @@ class MqttPublisher:
         self._broker_port = broker_port
         self._connected = False
 
-        factory = client_factory or (lambda: mqtt.Client(
-            client_id=client_id,
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
-        ))
+        factory = client_factory or (
+            lambda: mqtt.Client(
+                client_id=client_id,
+                callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            )
+        )
         self._client: mqtt.Client = factory()
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
@@ -280,7 +282,9 @@ class MqttPublisher:
         body = payload if isinstance(payload, str) else json.dumps(payload)
         info = self._client.publish(topic, body, qos=qos)
         if info.rc != mqtt.MQTT_ERR_SUCCESS:
-            logger.warning("MqttPublisher: publish failed rc=%d topic=%s", info.rc, topic)
+            logger.warning(
+                "MqttPublisher: publish failed rc=%d topic=%s", info.rc, topic
+            )
             return False
         return True
 
@@ -291,19 +295,28 @@ class MqttPublisher:
     def _on_connect(self, client, userdata, connect_flags, rc, properties=None) -> None:  # noqa: ANN001
         if rc == 0:
             self._connected = True
-            logger.info("MqttPublisher: connected to %s:%d", self._broker_host, self._broker_port)
+            logger.info(
+                "MqttPublisher: connected to %s:%d",
+                self._broker_host,
+                self._broker_port,
+            )
         else:
             logger.error("MqttPublisher: connect failed rc=%d", rc)
 
-    def _on_disconnect(self, client, userdata, disconnect_flags, rc, properties=None) -> None:  # noqa: ANN001
+    def _on_disconnect(
+        self, client, userdata, disconnect_flags, rc, properties=None
+    ) -> None:  # noqa: ANN001
         self._connected = False
         if rc != 0:
-            logger.warning("MqttPublisher: unexpected disconnect rc=%d — paho will retry", rc)
+            logger.warning(
+                "MqttPublisher: unexpected disconnect rc=%d — paho will retry", rc
+            )
 
 
 # ---------------------------------------------------------------------------
 # Module-level helper
 # ---------------------------------------------------------------------------
+
 
 def _now_iso() -> str:
     """Return the current UTC time as an ISO 8601 string."""

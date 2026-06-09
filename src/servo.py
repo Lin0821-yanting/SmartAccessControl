@@ -23,11 +23,11 @@ import time
 import gpiod
 
 CHIP_NAME: str = "gpiochip0"
-SERVO_LINE: int = 43          # PH.00 — BOARD pin 33
+SERVO_LINE: int = 43  # PH.00 — BOARD pin 33
 CONSUMER: str = "capstone"
 
 SERVO_FREQ_HZ: int = 50
-PERIOD_S: float = 1.0 / SERVO_FREQ_HZ   # 20 ms
+PERIOD_S: float = 1.0 / SERVO_FREQ_HZ  # 20 ms
 
 # SG90: 1.0 ms pulse = 0° (locked), 2.0 ms pulse = 90° (unlocked)
 PULSE_LOCKED_MS: float = 1.0

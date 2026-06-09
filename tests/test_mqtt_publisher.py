@@ -27,12 +27,13 @@ from src.mqtt_publisher import (
 # Fixtures
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture()
 def mock_client() -> MagicMock:
     """A mock paho Client with publish() returning a success MagicMock."""
     client = MagicMock()
     result = MagicMock()
-    result.rc = 0          # MQTT_ERR_SUCCESS
+    result.rc = 0  # MQTT_ERR_SUCCESS
     client.publish.return_value = result
     return client
 
@@ -46,6 +47,7 @@ def publisher(mock_client: MagicMock) -> MqttPublisher:
 # ---------------------------------------------------------------------------
 # Connection state
 # ---------------------------------------------------------------------------
+
 
 class TestConnectionState:
     def test_initially_disconnected(self, publisher: MqttPublisher) -> None:
@@ -75,9 +77,7 @@ class TestConnectionState:
         mock_client.disconnect.assert_called_once()
         assert publisher.connected is False
 
-    def test_reconnect_delay_set_called_on_init(
-        self, mock_client: MagicMock
-    ) -> None:
+    def test_reconnect_delay_set_called_on_init(self, mock_client: MagicMock) -> None:
         MqttPublisher(client_factory=lambda: mock_client)
         mock_client.reconnect_delay_set.assert_called_once()
 
@@ -85,6 +85,7 @@ class TestConnectionState:
 # ---------------------------------------------------------------------------
 # publish() low-level method
 # ---------------------------------------------------------------------------
+
 
 class TestPublishLowLevel:
     def test_publish_when_disconnected_returns_false(
@@ -114,14 +115,14 @@ class TestPublishLowLevel:
         raw = '{"already": "json"}'
         publisher.publish(TOPIC_EVENTS, raw)
         args, _ = mock_client.publish.call_args
-        assert args[1] == raw     # not '\'{"already": "json"}\''
+        assert args[1] == raw  # not '\'{"already": "json"}\''
 
     def test_publish_returns_false_on_paho_error(
         self, publisher: MqttPublisher, mock_client: MagicMock
     ) -> None:
         publisher._connected = True
         error_result = MagicMock()
-        error_result.rc = 4        # MQTT_ERR_NO_CONN
+        error_result.rc = 4  # MQTT_ERR_NO_CONN
         mock_client.publish.return_value = error_result
 
         result = publisher.publish(TOPIC_EVENTS, {"x": 1})
@@ -131,6 +132,7 @@ class TestPublishLowLevel:
 # ---------------------------------------------------------------------------
 # publish_event()
 # ---------------------------------------------------------------------------
+
 
 class TestPublishEvent:
     _BASE_KWARGS = dict(
@@ -159,9 +161,17 @@ class TestPublishEvent:
         publisher.publish_event(**self._BASE_KWARGS)
         args, _ = mock_client.publish.call_args
         data = json.loads(args[1])
-        for field in ("decision", "identity", "similarity", "spoof_score",
-                      "is_live", "face_in_db", "consecutive_frames", "bbox",
-                      "timestamp"):
+        for field in (
+            "decision",
+            "identity",
+            "similarity",
+            "spoof_score",
+            "is_live",
+            "face_in_db",
+            "consecutive_frames",
+            "bbox",
+            "timestamp",
+        ):
             assert field in data, f"missing field: {field}"
 
     def test_similarity_rounded_to_4_decimals(
@@ -189,6 +199,7 @@ class TestPublishEvent:
 # publish_status()
 # ---------------------------------------------------------------------------
 
+
 class TestPublishStatus:
     def test_publishes_to_correct_topic_with_qos1(
         self, publisher: MqttPublisher, mock_client: MagicMock
@@ -215,6 +226,7 @@ class TestPublishStatus:
 # publish_heartbeat()
 # ---------------------------------------------------------------------------
 
+
 class TestPublishHeartbeat:
     _BASE_KWARGS = dict(
         fps=18.5,
@@ -240,8 +252,15 @@ class TestPublishHeartbeat:
         publisher.publish_heartbeat(**self._BASE_KWARGS)
         args, _ = mock_client.publish.call_args
         data = json.loads(args[1])
-        for field in ("fps", "cpu_temp_c", "ram_used_gb", "distance_cm",
-                      "pipeline_stage", "container_uptime_s", "timestamp"):
+        for field in (
+            "fps",
+            "cpu_temp_c",
+            "ram_used_gb",
+            "distance_cm",
+            "pipeline_stage",
+            "container_uptime_s",
+            "timestamp",
+        ):
             assert field in data, f"missing field: {field}"
 
     def test_fps_rounded_to_2_decimals(
