@@ -47,6 +47,10 @@ services:
       - /home/jetson/.local/lib/python3.10/site-packages/onnxruntime:/usr/local/lib/python3.10/dist-packages/onnxruntime:ro
       - /home/jetson/SmartAccessControl/.venv/lib/python3.10/site-packages/gpiod.cpython-310-aarch64-linux-gnu.so:/usr/local/lib/python3.10/dist-packages/gpiod.cpython-310-aarch64-linux-gnu.so:ro
       - /usr/lib/aarch64-linux-gnu/libgpiod.so.2:/usr/lib/aarch64-linux-gnu/libgpiod.so.2:ro
+      - /usr/lib/aarch64-linux-gnu/gstreamer-1.0:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:ro
+      - /usr/lib/aarch64-linux-gnu/nvidia:/usr/lib/aarch64-linux-gnu/nvidia:ro
+      - /usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/tegra:ro
+      - /tmp/argus_socket:/tmp/argus_socket
     devices:
       - /dev/gpiochip0:/dev/gpiochip0
       - /dev/gpiochip1:/dev/gpiochip1
