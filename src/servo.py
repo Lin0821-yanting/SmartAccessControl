@@ -30,7 +30,7 @@ import time
 
 import gpiod
 
-CHIP_NAME: str = "gpiochip0"
+CHIP_NAME: str = "/dev/gpiochip0"
 SERVO_LINE: int = 43  # PH.00 — BOARD pin 33
 CONSUMER: str = "capstone"
 

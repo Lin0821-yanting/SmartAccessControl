@@ -17,65 +17,41 @@
 
 services:
 
-  # ── Service 1: MQTT broker ────────────────────────────────────────────────
   mosquitto:
     image: eclipse-mosquitto:2
     volumes:
-      # Config is read-only; data volume persists retained messages.
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto-data:/mosquitto/data
     restart: unless-stopped
     healthcheck:
-      # $SYS/# is Mosquitto's built-in stats topic; receiving one message
-      # within 3 s proves the broker is alive without any external publisher.
-      # $$ escapes Docker Compose's variable interpolation.
       test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-W", "3"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 5s
 
-  # ── Service 2: Smart Access Control pipeline ──────────────────────────────
   access-control:
-    # IMAGE_TAG is exported by deploy.sh before calling `docker compose up`.
-    # Default is :latest for manual developer use.
     image: ghcr.io/lin0821-yanting/smartaccesscontrol:${IMAGE_TAG:-latest}
-
-    # --runtime nvidia grants GPU access (TensorRT, CUDA).
-    # Required for YOLOv8n-face TRT inference.
     runtime: nvidia
-
     depends_on:
       mosquitto:
         condition: service_healthy
-
     environment:
-      # Docker bridge DNS resolves "mosquitto" to the broker container IP.
-      # This is the only change needed vs. running bare on the Jetson.
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
-
+      - JETSON_TESTING_MODEL_NAME=JETSON_ORIN_NANO
     volumes:
-      # TRT engine cache: compiled once at first startup, reused on all
-      # subsequent starts.  Survives `docker compose down` (named volume).
       - engine-cache:/app/models/engines
-
-      # Face database and enrollment photos: mounted from the Jetson host
-      # so faces can be enrolled (or revoked) without rebuilding the image.
       - /home/jetson/SmartAccessControl/data:/app/data
-
-      # ONNX model weights: bind-mount the host weights directory.
-      # Update the path if your weights live elsewhere.
       - /home/jetson/SmartAccessControl/models/weights:/app/models/weights:ro
-
-    # Camera device passthrough (CSI camera on /dev/video0).
-    # Remove if running without a camera (e.g., static-frame integration tests).
+      - /usr/local/lib/python3.10/dist-packages/Jetson:/usr/local/lib/python3.10/dist-packages/Jetson:ro
+      - /home/jetson/.local/lib/python3.10/site-packages/onnxruntime:/usr/local/lib/python3.10/dist-packages/onnxruntime:ro
     devices:
+      - /dev/gpiochip0:/dev/gpiochip0
+      - /dev/gpiochip1:/dev/gpiochip1
       - /dev/video0:/dev/video0
-
     restart: unless-stopped
 
-# ── Named volumes ─────────────────────────────────────────────────────────────
 volumes:
   mosquitto-data:
-  engine-cache:   # TRT engine persists across image updates — never loses compilation work
+  engine-cache:
