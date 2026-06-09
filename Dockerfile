@@ -63,6 +63,15 @@ LABEL org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
 
+# Install system libraries required by cv2 (opencv-python-headless).
+# libGL.so.1 is needed even by the headless variant at import time.
+# libglib2.0-0 provides libgobject and other GLib dependencies cv2 uses.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy pip-installed packages from the builder stage.
 COPY --from=builder \
     /usr/local/lib/python3.10/dist-packages \
@@ -74,6 +83,8 @@ COPY configs/    ./configs/
 COPY scripts/    ./scripts/
 
 # ── Runtime directories ────────────────────────────────────────────────────────
+# These will be bind-mounted or named volumes at compose time, but we create
+# them here so the container starts cleanly even without a mount.
 RUN mkdir -p /app/models/engines \
              /app/data/enrollment \
              /tmp
@@ -84,8 +95,12 @@ RUN chmod +x /entrypoint.sh
 
 # ── Environment ────────────────────────────────────────────────────────────────
 ENV PYTHONPATH=/app
+# MQTT_BROKER is overridden by docker-compose to the service name "mosquitto".
+# The default "mosquitto" works with the compose stack; use "localhost" for
+# standalone docker run testing with a local broker.
 ENV MQTT_BROKER=mosquitto
 ENV MQTT_PORT=1883
+# Suppress GTK/EGL errors in headless SSH sessions.
 ENV DISPLAY=
 
 ENTRYPOINT ["/entrypoint.sh"]

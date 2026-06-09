@@ -90,45 +90,40 @@ def _make_tracked_actuator(delay: float = 0.05) -> tuple[ActuatorController, lis
 
 
 # ---------------------------------------------------------------------------
-# IT-6-A：同類方法並發序列化
-#
-# 最常見的場景：同一人連續兩幀都被判為 DENY，
-# orchestrator 連發兩個 daemon thread 各呼叫一次 deny_access()。
+# IT-6-A：同類方法並發時的 Drop-on-busy 行為
 # ---------------------------------------------------------------------------
 
 
 class TestSameMethodConcurrency:
-    """兩個並發的相同 actuator 方法必須序列化執行。."""
+    """測試 ActuatorController 的 Drop-on-busy 機制（非阻塞鎖）。"""
 
-    def test_two_concurrent_deny_calls_serialize(self) -> None:
+    def test_two_concurrent_deny_calls_first_wins_second_dropped(self) -> None:
         """
-        t1 持有 _lock 執行 deny_access() 期間，t2 被阻擋。.
-
-        t1 釋放 _lock 後，t2 才能開始執行。
-        預期 call_log：["START", "END", "START", "END"]（序列化）
-        拒絕 call_log：["START", "START", "END", "END"]（交錯 → RLock 失效）
+        兩個並發的 deny_access() 呼叫，預期只有第一個會執行，第二個被 silently dropped。
         """
-        actuator, call_log, entered = _make_tracked_actuator(delay=0.05)
+        actuator, call_log, entered = _make_tracked_actuator(delay=0.08)
 
         t1 = threading.Thread(target=actuator.deny_access, name="t1")
         t2 = threading.Thread(target=actuator.deny_access, name="t2")
 
         t1.start()
-        entered.wait()  # t1 已持有 _lock 並進入 indicate()
-        t2.start()  # t2 嘗試取得 _lock，應被阻擋
+        entered.wait()          # t1 已進入並持有鎖
+        t2.start()              # t2 嘗試取得鎖 → 應被 drop
 
         t1.join(timeout=1.0)
         t2.join(timeout=1.0)
 
-        assert call_log == ["START", "END", "START", "END"], (
-            f"deny_access() 並發呼叫未序列化，call_log={call_log!r}"
+        # Drop-on-busy 行為：只有第一個呼叫執行
+        assert call_log == ["START", "END"], (
+            f"預期只有第一個 deny_access 執行，實際 call_log={call_log!r}"
         )
 
-    def test_two_concurrent_alert_unknown_calls_serialize(self) -> None:
-        """連續兩次 alert_unknown() 的 LED 呼叫必須序列化。."""
-        actuator, call_log, entered = _make_tracked_actuator(delay=0.05)
+    def test_two_concurrent_alert_unknown_calls_first_wins_second_dropped(self) -> None:
+        """兩個並發的 alert_unknown() 呼叫，第二個應被 dropped。"""
+        actuator, call_log, entered = _make_tracked_actuator(delay=0.15)
 
-        with patch("time.sleep"):  # 抑制 _multi_beep 的 inter-beep sleep
+        # 只 patch _multi_beep，不要 patch time.sleep（避免影響 tracked_led 的延遲）
+        with patch.object(actuator, "_multi_beep"):
             t1 = threading.Thread(target=actuator.alert_unknown, name="t1")
             t2 = threading.Thread(target=actuator.alert_unknown, name="t2")
 
@@ -136,54 +131,48 @@ class TestSameMethodConcurrency:
             entered.wait()
             t2.start()
 
-            t1.join(timeout=1.0)
+            t1.join(timeout=2.0)
             t2.join(timeout=1.0)
 
-        assert call_log == ["START", "END", "START", "END"], (
-            f"alert_unknown() 並發呼叫未序列化，call_log={call_log!r}"
+        assert call_log == ["START", "END"], (
+            f"預期只有第一個 alert_unknown 執行，實際 call_log={call_log!r}"
         )
 
 
 # ---------------------------------------------------------------------------
-# IT-6-B：不同方法並發序列化
-#
-# 更真實的場景：GRANT 的 daemon thread 尚未完成，下一幀卻產生 DENY，
-# orchestrator 再發一個 daemon thread 呼叫 deny_access()。
-# 若沒有 _lock，DENY 的紅燈會在 GRANT 的綠燈還亮著時就啟動。
+# IT-6-B：不同方法並發時的 Drop-on-busy 行為
 # ---------------------------------------------------------------------------
 
 
 class TestDifferentMethodConcurrency:
-    """GRANT 執行中，並發的 DENY 必須等 GRANT 完成後才開始。."""
+    """不同方法並發時，後發的呼叫應被 dropped（而非等待）。"""
 
-    def test_deny_waits_for_ongoing_grant(self) -> None:
+    def test_deny_dropped_when_grant_is_ongoing(self) -> None:
         """
-        t1 執行 grant_access()（持有 _lock）時，t2 執行 deny_access() 必須被阻擋。.
-
-        驗證：call_log 中不會出現 ["START", "START", ...] 的模式。
+        grant_access() 執行中（持有鎖），並發的 deny_access() 應被 silently dropped。
         """
-        actuator, call_log, entered = _make_tracked_actuator(delay=0.05)
+        actuator, call_log, entered = _make_tracked_actuator(delay=0.08)
 
         t1 = threading.Thread(target=actuator.grant_access, name="grant")
         t2 = threading.Thread(target=actuator.deny_access, name="deny")
 
         t1.start()
-        entered.wait()  # grant 已持有 _lock
-        t2.start()  # deny 嘗試取得 _lock，應被阻擋
+        entered.wait()   # grant 已進入 indicate() 並持有鎖
+        t2.start()       # deny 嘗試取得鎖 → 應被 drop
 
-        t1.join(timeout=1.0)
+        t1.join(timeout=1.5)
         t2.join(timeout=1.0)
 
-        # grant 的 LED START 後，deny 的 LED START 必須在 grant 的 END 之後
-        assert call_log == ["START", "END", "START", "END"], (
-            f"grant_access() 與 deny_access() 並發執行未序列化，call_log={call_log!r}"
+        # 只有 grant 的 LED 被執行，deny 被 drop
+        assert call_log == ["START", "END"], (
+            f"grant 執行中，deny 應被 dropped，實際 call_log={call_log!r}"
         )
 
-    def test_unknown_alert_waits_for_ongoing_deny(self) -> None:
-        """DENY 執行中，後續 UNKNOWN 必須等待，不能打斷 DENY 的紅燈序列。."""
-        actuator, call_log, entered = _make_tracked_actuator(delay=0.05)
+    def test_alert_unknown_dropped_when_deny_is_ongoing(self) -> None:
+        """deny_access() 執行中，後續的 alert_unknown() 應被 dropped。"""
+        actuator, call_log, entered = _make_tracked_actuator(delay=0.15)
 
-        with patch("time.sleep"):
+        with patch.object(actuator, "_multi_beep"):
             t1 = threading.Thread(target=actuator.deny_access, name="deny")
             t2 = threading.Thread(target=actuator.alert_unknown, name="unknown")
 
@@ -191,53 +180,55 @@ class TestDifferentMethodConcurrency:
             entered.wait()
             t2.start()
 
-            t1.join(timeout=1.0)
+            t1.join(timeout=2.0)
             t2.join(timeout=1.0)
 
-        assert call_log == ["START", "END", "START", "END"], (
-            f"deny_access() 與 alert_unknown() 並發執行未序列化，call_log={call_log!r}"
+        assert call_log == ["START", "END"], (
+            f"deny 執行中，alert_unknown 應被 dropped，實際 call_log={call_log!r}"
         )
 
 
 # ---------------------------------------------------------------------------
-# IT-6-C：完成所有並發呼叫後無遺漏操作
-#
-# 序列化保證「第一個完整執行、第二個完整執行」，
-# 不會出現「第一個執行到一半被跳過」的情況。
+# IT-6-C：多執行緒同時呼叫時的 Drop-on-busy 行為
 # ---------------------------------------------------------------------------
 
 
 class TestNoDroppedOperations:
-    """並發呼叫都必須完整執行，不能因鎖競爭而被略過。."""
+    """多執行緒同時呼叫時，只有第一個能取得鎖，其餘全部被 dropped。"""
 
-    def test_all_concurrent_calls_complete(self) -> None:
-        """5 個執行緒並發呼叫 deny_access()，所有 5 次 LED.indicate() 必須完整執行."""
+    def test_only_first_call_executes_when_many_concurrent(self) -> None:
+        """
+        5 個執行緒幾乎同時呼叫 deny_access()，
+        由於使用 non-blocking acquire，只有第一個會成功執行，其餘 4 個被 dropped。
+        """
         call_log: list[str] = []
-        lock = threading.Lock()
+        log_lock = threading.Lock()
 
         def tracked_led(success: bool, duration: float | None = None) -> None:
-            with lock:
+            with log_lock:
                 call_log.append("START")
-            time.sleep(0.02)
-            with lock:
+            time.sleep(0.05)
+            with log_lock:
                 call_log.append("END")
 
         mock_led = MagicMock()
         mock_led.indicate.side_effect = tracked_led
 
-        actuator = ActuatorController(led=mock_led, buzzer=MagicMock(), servo=MagicMock())
+        actuator = ActuatorController(
+            led=mock_led, buzzer=MagicMock(), servo=MagicMock()
+        )
 
         _n = 5
         threads = [threading.Thread(target=actuator.deny_access) for _ in range(_n)]
+
         for t in threads:
             t.start()
         for t in threads:
             t.join(timeout=2.0)
 
-        assert call_log.count("START") == _n, f"預期 {_n} 次 START，實際 {call_log.count('START')}"
-        assert call_log.count("END") == _n, f"預期 {_n} 次 END，實際 {call_log.count('END')}"
-        # 序列化：START 和 END 必須交替出現，不能有連續兩個 START
-        for i in range(0, len(call_log) - 1, 2):
-            assert call_log[i] == "START" and call_log[i + 1] == "END", (
-                f"位置 {i} 出現非 START/END 交替的模式：{call_log}"
-            )
+        # Drop-on-busy 行為：只有 1 次執行
+        assert call_log.count("START") == 1, (
+            f"Drop-on-busy 模式下，預期只有 1 次 START，實際 {call_log.count('START')}"
+        )
+        assert call_log.count("END") == 1
+        assert call_log == ["START", "END"]
