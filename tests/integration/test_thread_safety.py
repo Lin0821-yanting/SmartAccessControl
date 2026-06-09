@@ -95,12 +95,10 @@ def _make_tracked_actuator(delay: float = 0.05) -> tuple[ActuatorController, lis
 
 
 class TestSameMethodConcurrency:
-    """測試 ActuatorController 的 Drop-on-busy 機制（非阻塞鎖）。"""
+    """測試 ActuatorController 的 Drop-on-busy 機制（非阻塞鎖）。."""
 
     def test_two_concurrent_deny_calls_first_wins_second_dropped(self) -> None:
-        """
-        兩個並發的 deny_access() 呼叫，預期只有第一個會執行，第二個被 silently dropped。
-        """
+        """兩個並發的 deny_access() 呼叫，預期只有第一個會執行，第二個被 silently dropped。."""
         actuator, call_log, entered = _make_tracked_actuator(delay=0.08)
 
         t1 = threading.Thread(target=actuator.deny_access, name="t1")
@@ -119,7 +117,7 @@ class TestSameMethodConcurrency:
         )
 
     def test_two_concurrent_alert_unknown_calls_first_wins_second_dropped(self) -> None:
-        """兩個並發的 alert_unknown() 呼叫，第二個應被 dropped。"""
+        """兩個並發的 alert_unknown() 呼叫，第二個應被 dropped。."""
         actuator, call_log, entered = _make_tracked_actuator(delay=0.15)
 
         # 只 patch _multi_beep，不要 patch time.sleep（避免影響 tracked_led 的延遲）
@@ -145,12 +143,10 @@ class TestSameMethodConcurrency:
 
 
 class TestDifferentMethodConcurrency:
-    """不同方法並發時，後發的呼叫應被 dropped（而非等待）。"""
+    """不同方法並發時，後發的呼叫應被 dropped（而非等待）。."""
 
     def test_deny_dropped_when_grant_is_ongoing(self) -> None:
-        """
-        grant_access() 執行中（持有鎖），並發的 deny_access() 應被 silently dropped。
-        """
+        """grant_access() 執行中（持有鎖），並發的 deny_access() 應被 silently dropped。."""
         actuator, call_log, entered = _make_tracked_actuator(delay=0.08)
 
         t1 = threading.Thread(target=actuator.grant_access, name="grant")
@@ -169,7 +165,7 @@ class TestDifferentMethodConcurrency:
         )
 
     def test_alert_unknown_dropped_when_deny_is_ongoing(self) -> None:
-        """deny_access() 執行中，後續的 alert_unknown() 應被 dropped。"""
+        """deny_access() 執行中，後續的 alert_unknown() 應被 dropped。."""
         actuator, call_log, entered = _make_tracked_actuator(delay=0.15)
 
         with patch.object(actuator, "_multi_beep"):
@@ -194,13 +190,10 @@ class TestDifferentMethodConcurrency:
 
 
 class TestNoDroppedOperations:
-    """多執行緒同時呼叫時，只有第一個能取得鎖，其餘全部被 dropped。"""
+    """多執行緒同時呼叫時，只有第一個能取得鎖，其餘全部被 dropped。."""
 
     def test_only_first_call_executes_when_many_concurrent(self) -> None:
-        """
-        5 個執行緒幾乎同時呼叫 deny_access()，
-        由於使用 non-blocking acquire，只有第一個會成功執行，其餘 4 個被 dropped。
-        """
+        """五個執行緒同時呼叫 deny_access()，僅第一個成功，其餘被丟棄。."""
         call_log: list[str] = []
         log_lock = threading.Lock()
 
