@@ -1,5 +1,6 @@
 import sys
 from unittest.mock import MagicMock
+
 sys.modules["mediapipe"] = MagicMock()
 sys.modules["mediapipe.solutions"] = MagicMock()
 sys.modules["mediapipe.solutions.face_mesh"] = MagicMock()
