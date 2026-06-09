@@ -128,10 +128,13 @@ class TestLED:
         assert high_call in output_calls
         assert low_call in output_calls
 
-    @pytest.mark.parametrize("success,expected_duration", [
-        (True, GREEN_LED_HOLD_S),
-        (False, RED_LED_HOLD_S),
-    ])
+    @pytest.mark.parametrize(
+        "success,expected_duration",
+        [
+            (True, GREEN_LED_HOLD_S),
+            (False, RED_LED_HOLD_S),
+        ],
+    )
     def test_indicate_default_duration(self, success: bool, expected_duration: float) -> None:
         """indicate() without explicit duration uses the module-level constant."""
         led = LED(green_pin=7, red_pin=11)
@@ -297,8 +300,7 @@ class TestServo:
 
     def test_unlock_then_relock_sequence(self) -> None:
         """unlock_then_relock() must: _goto(unlock) → sleep(UNLOCK_HOLD_S) → _goto(lock)."""
-        with patch.object(Servo, "_goto") as mock_goto, \
-             patch("src.servo.time.sleep") as mock_sleep:
+        with patch.object(Servo, "_goto") as mock_goto, patch("src.servo.time.sleep") as mock_sleep:
             servo = Servo()
             mock_goto.reset_mock()
             servo.unlock_then_relock()
@@ -375,25 +377,28 @@ class TestHCSR04:
         with patch("time.sleep"):
             sensor = HcSr04(trigger_pin=31, echo_pin=15)
 
-        echo_duration = 0.001   # 1 ms → 17.15 cm
+        echo_duration = 0.001  # 1 ms → 17.15 cm
         expected = echo_duration * SPEED_OF_SOUND_CM_PER_S / 2.0
         t_start = 0.1
         t_end = t_start + echo_duration  # 0.101
 
         _gpio_mock.input.side_effect = [
-            _gpio_mock.LOW,   # input[0]: stuck guard → not stuck
-            _gpio_mock.LOW,   # input[1]: while LOW → enters loop
+            _gpio_mock.LOW,  # input[0]: stuck guard → not stuck
+            _gpio_mock.LOW,  # input[1]: while LOW → enters loop
             _gpio_mock.HIGH,  # input[2]: while LOW → exits loop
             _gpio_mock.HIGH,  # input[3]: while HIGH → enters loop
-            _gpio_mock.LOW,   # input[4]: while HIGH → exits loop
+            _gpio_mock.LOW,  # input[4]: while HIGH → exits loop
         ]
-        with patch("time.monotonic", side_effect=[
-            0.0,      # [0] deadline = 0.0 + ECHO_TIMEOUT_S
-            0.0,      # [1] while LOW timeout check (not expired)
-            t_start,  # [2] t_start = 0.1
-            0.0,      # [3] while HIGH timeout check (not expired)
-            t_end,    # [4] final distance calculation
-        ]):
+        with patch(
+            "time.monotonic",
+            side_effect=[
+                0.0,  # [0] deadline = 0.0 + ECHO_TIMEOUT_S
+                0.0,  # [1] while LOW timeout check (not expired)
+                t_start,  # [2] t_start = 0.1
+                0.0,  # [3] while HIGH timeout check (not expired)
+                t_end,  # [4] final distance calculation
+            ],
+        ):
             dist = sensor._measure_distance()
 
         assert abs(dist - expected) < 0.01

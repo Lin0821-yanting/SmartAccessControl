@@ -105,8 +105,8 @@ class TestSameMethodConcurrency:
         t2 = threading.Thread(target=actuator.deny_access, name="t2")
 
         t1.start()
-        entered.wait()          # t1 已進入並持有鎖
-        t2.start()              # t2 嘗試取得鎖 → 應被 drop
+        entered.wait()  # t1 已進入並持有鎖
+        t2.start()  # t2 嘗試取得鎖 → 應被 drop
 
         t1.join(timeout=1.0)
         t2.join(timeout=1.0)
@@ -153,8 +153,8 @@ class TestDifferentMethodConcurrency:
         t2 = threading.Thread(target=actuator.deny_access, name="deny")
 
         t1.start()
-        entered.wait()   # grant 已進入 indicate() 並持有鎖
-        t2.start()       # deny 嘗試取得鎖 → 應被 drop
+        entered.wait()  # grant 已進入 indicate() 並持有鎖
+        t2.start()  # deny 嘗試取得鎖 → 應被 drop
 
         t1.join(timeout=1.5)
         t2.join(timeout=1.0)
@@ -207,9 +207,7 @@ class TestNoDroppedOperations:
         mock_led = MagicMock()
         mock_led.indicate.side_effect = tracked_led
 
-        actuator = ActuatorController(
-            led=mock_led, buzzer=MagicMock(), servo=MagicMock()
-        )
+        actuator = ActuatorController(led=mock_led, buzzer=MagicMock(), servo=MagicMock())
 
         _n = 5
         threads = [threading.Thread(target=actuator.deny_access) for _ in range(_n)]

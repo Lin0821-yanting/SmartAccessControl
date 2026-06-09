@@ -31,11 +31,11 @@ import time
 import gpiod
 
 CHIP_NAME: str = "gpiochip0"
-SERVO_LINE: int = 43          # PH.00 — BOARD pin 33
+SERVO_LINE: int = 43  # PH.00 — BOARD pin 33
 CONSUMER: str = "capstone"
 
 SERVO_FREQ_HZ: int = 50
-PERIOD_S: float = 1.0 / SERVO_FREQ_HZ   # 20 ms
+PERIOD_S: float = 1.0 / SERVO_FREQ_HZ  # 20 ms
 
 # SG90: 1.0 ms pulse = 0° (locked), 2.0 ms pulse = 90° (unlocked)
 PULSE_LOCKED_MS: float = 1.0
@@ -150,9 +150,9 @@ class Servo:
         (≈ 4.2 s with defaults).  Run it in a worker thread if you need
         the main pipeline to stay live during the unlock period.
         """
-        self._goto(PULSE_UNLOCKED_MS)        # burst → servo reaches 90°
-        time.sleep(UNLOCK_HOLD_S)            # hold (no signal = no jitter)
-        self._goto(PULSE_LOCKED_MS)          # burst → servo returns to 0°
+        self._goto(PULSE_UNLOCKED_MS)  # burst → servo reaches 90°
+        time.sleep(UNLOCK_HOLD_S)  # hold (no signal = no jitter)
+        self._goto(PULSE_LOCKED_MS)  # burst → servo returns to 0°
 
     def cleanup(self) -> None:
         """Return servo to locked position and release GPIO."""
