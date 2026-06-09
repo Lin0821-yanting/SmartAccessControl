@@ -259,12 +259,17 @@ class Orchestrator:
         # Try GStreamer CSI camera first; fall back to static blank frame
         # for headless Docker environments without nvarguscamerasrc.
         cap = cv2.VideoCapture(_gstreamer_pipeline(), cv2.CAP_GSTREAMER)
+        if not cap.isOpened():
+            # Fallback: try V4L2 directly
+            logger.warning("GStreamer CSI failed — trying V4L2 /dev/video0")
+            cap = cv2.VideoCapture(0)
+
         use_static_frame = not cap.isOpened()
         if use_static_frame:
-            logger.warning("Cannot open CSI camera — running with static blank frame")
+            logger.warning("Cannot open any camera — running in sensor-only mode")
             cap = None
         else:
-            logger.info("Orchestrator: pipeline started")
+            logger.info("Camera opened successfully")
 
         print("\n[Orchestrator] Running. Press Q or Ctrl-C to stop.\n")
 
