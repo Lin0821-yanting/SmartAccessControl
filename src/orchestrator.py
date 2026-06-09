@@ -271,15 +271,21 @@ class Orchestrator:
         try:
             while True:
                 if use_static_frame:
-                    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
-                else:
-                    ret, frame = cap.read()
-                    if not ret:
-                        continue
+                    # Headless mode: HC-SR04 polling only, no AI pipeline.
+                    # Do NOT call _tick() — static blank frame causes
+                    # TRT negative dimension error.
+                    self._distance_cm = self._sensor._measure_distance()
+                    self._update_fps()
+                    time.sleep(0.05)
+                    continue
+
+                ret, frame = cap.read()
+                if not ret:
+                    continue
 
                 self._tick(frame)
 
-                if self._display and not use_static_frame:
+                if self._display:
                     cv2.imshow("Smart Access Control", frame)
                     if cv2.waitKey(1) & 0xFF in (ord("q"), 27):
                         break
