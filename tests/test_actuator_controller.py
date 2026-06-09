@@ -20,9 +20,9 @@ from src.actuator_controller import (
 
 @pytest.fixture()
 def mocks():
-    mock_led    = MagicMock()
+    mock_led = MagicMock()
     mock_buzzer = MagicMock()
-    mock_servo  = MagicMock()
+    mock_servo = MagicMock()
     ctrl = ActuatorController(led=mock_led, buzzer=mock_buzzer, servo=mock_servo)
     return mock_led, mock_buzzer, mock_servo, ctrl
 

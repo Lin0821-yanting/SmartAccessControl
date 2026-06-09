@@ -8,6 +8,7 @@ Registers stubs for:
 Note: test_sensors.py maintains its OWN _gpio_mock and _gpiod_mock
 to avoid cross-test state pollution.
 """
+
 import sys
 import types
 from unittest.mock import MagicMock
@@ -33,9 +34,14 @@ sys.modules.setdefault("gpiod", _gpiod_mock)
 
 # ── M1 AI modules ──────────────────────────────────────────────────────────
 for _mod in [
-    "cv2", "yaml", "ultralytics",
-    "src.detection", "src.detection.detector",
-    "src.recognition", "src.recognition.recognizer",
-    "src.antispoof", "src.antispoof.antispoof",
+    "cv2",
+    "yaml",
+    "ultralytics",
+    "src.detection",
+    "src.detection.detector",
+    "src.recognition",
+    "src.recognition.recognizer",
+    "src.antispoof",
+    "src.antispoof.antispoof",
 ]:
     sys.modules.setdefault(_mod, MagicMock())

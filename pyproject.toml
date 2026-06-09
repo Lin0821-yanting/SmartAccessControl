@@ -34,3 +34,10 @@ license = {text = "MIT"}
 
 [tool.pdm]
 distribution = false
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["D", "E501", "E402"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E741", "F401", "RUF059", "N806", "E402"]

@@ -36,8 +36,8 @@ class AccessPublisher:
     """
 
     DEFAULT_TOPICS = {
-        "events":    "lab/access/events",
-        "status":    "lab/access/status",
+        "events": "lab/access/events",
+        "status": "lab/access/status",
         "heartbeat": "lab/access/heartbeat",
     }
 
@@ -48,11 +48,11 @@ class AccessPublisher:
         topics: dict = None,
     ):
         self.broker = broker
-        self.port   = port
+        self.port = port
         self.topics = topics or self.DEFAULT_TOPICS
 
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-        self.client.on_connect    = self._on_connect
+        self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
 
         self._connected = False
@@ -109,12 +109,12 @@ class AccessPublisher:
             }
         """
         payload = {
-            "identity":   name,
+            "identity": name,
             "similarity": round(similarity, 4),
-            "liveness":   round(liveness, 4),
-            "granted":    granted,
-            "reason":     reason,
-            "timestamp":  datetime.now().isoformat(timespec="seconds"),
+            "liveness": round(liveness, 4),
+            "granted": granted,
+            "reason": reason,
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
         }
         self._publish(self.topics["events"], payload)
 
@@ -127,9 +127,9 @@ class AccessPublisher:
             last_person: 最後授權的人員名稱
         """
         payload = {
-            "door_state":  door_state,
+            "door_state": door_state,
             "last_person": last_person,
-            "timestamp":   datetime.now().isoformat(timespec="seconds"),
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
         }
         self._publish(self.topics["status"], payload)
 
@@ -146,9 +146,9 @@ class AccessPublisher:
             distance_cm: HC-SR04 距離（-1 表示未啟用）
         """
         payload = {
-            "fps":         round(fps, 1),
+            "fps": round(fps, 1),
             "distance_cm": round(distance_cm, 1),
-            "timestamp":   datetime.now().isoformat(timespec="seconds"),
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
         }
         self._publish(self.topics["heartbeat"], payload)
 
@@ -160,6 +160,7 @@ class AccessPublisher:
             fps_getter: callable，回傳當前 fps（float）
             interval:   發送間隔秒數（預設 5 秒）
         """
+
         def _loop():
             while True:
                 self.publish_heartbeat(fps=fps_getter())

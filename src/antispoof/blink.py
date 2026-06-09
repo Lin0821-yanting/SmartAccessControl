@@ -34,17 +34,18 @@ import mediapipe as mp
 
 
 # ── MediaPipe 眼睛輪廓索引 ────────────────────────────────────────────────────
-LEFT_EYE  = [33, 160, 158, 133, 153, 144]
+LEFT_EYE = [33, 160, 158, 133, 153, 144]
 RIGHT_EYE = [362, 385, 387, 263, 373, 380]
 
 
 @dataclass
 class BlinkResult:
     """眨眼偵測結果。"""
-    ear: float                  # 當前 EAR 值
-    is_closed: bool             # 當前幀眼睛是否閉合
-    blink_count: int            # 累計眨眼次數
-    blink_confirmed: bool       # 是否達到要求的眨眼次數
+
+    ear: float  # 當前 EAR 值
+    is_closed: bool  # 當前幀眼睛是否閉合
+    blink_count: int  # 累計眨眼次數
+    blink_confirmed: bool  # 是否達到要求的眨眼次數
     landmarks: Optional[object] = field(default=None, repr=False)
 
 
@@ -61,31 +62,33 @@ class BlinkDetector:
 
     def __init__(
         self,
-        ear_threshold: float  = 0.25,
-        required_blinks: int  = 2,
-        consec_frames: int    = 2,
-        reset_timeout: float  = 10.0,
+        ear_threshold: float = 0.25,
+        required_blinks: int = 2,
+        consec_frames: int = 2,
+        reset_timeout: float = 10.0,
     ):
-        self.ear_threshold   = ear_threshold
+        self.ear_threshold = ear_threshold
         self.required_blinks = required_blinks
-        self.consec_frames   = consec_frames
-        self.reset_timeout   = reset_timeout
+        self.consec_frames = consec_frames
+        self.reset_timeout = reset_timeout
 
         # MediaPipe Face Mesh
         self.mp_face_mesh = mp.solutions.face_mesh
-        self.face_mesh    = self.mp_face_mesh.FaceMesh(
+        self.face_mesh = self.mp_face_mesh.FaceMesh(
             max_num_faces=1,
             refine_landmarks=True,
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5,
         )
 
-        self._blink_count   = 0
-        self._consec_count  = 0      # 連續閉眼幀數
-        self._eye_closed    = False  # 上一幀眼睛狀態
-        self._last_blink_t  = time.time()
+        self._blink_count = 0
+        self._consec_count = 0  # 連續閉眼幀數
+        self._eye_closed = False  # 上一幀眼睛狀態
+        self._last_blink_t = time.time()
 
-        print(f"[BlinkDetector] 初始化，需要 {required_blinks} 次眨眼，EAR 門檻={ear_threshold}")
+        print(
+            f"[BlinkDetector] 初始化，需要 {required_blinks} 次眨眼，EAR 門檻={ear_threshold}"
+        )
 
     # ── EAR 計算 ─────────────────────────────────────────────────────────────
     @staticmethod
@@ -101,10 +104,7 @@ class BlinkDetector:
         Returns:
             EAR float
         """
-        pts = np.array([
-            [landmarks[i].x * w, landmarks[i].y * h]
-            for i in eye_indices
-        ])
+        pts = np.array([[landmarks[i].x * w, landmarks[i].y * h] for i in eye_indices])
 
         # 垂直距離
         A = np.linalg.norm(pts[1] - pts[5])
@@ -131,7 +131,7 @@ class BlinkDetector:
             self.reset()
 
         h, w = frame.shape[:2]
-        rgb   = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         result = self.face_mesh.process(rgb)
 
         if not result.multi_face_landmarks:
@@ -144,7 +144,7 @@ class BlinkDetector:
 
         lm = result.multi_face_landmarks[0].landmark
 
-        left_ear  = self._eye_aspect_ratio(lm, LEFT_EYE,  w, h)
+        left_ear = self._eye_aspect_ratio(lm, LEFT_EYE, w, h)
         right_ear = self._eye_aspect_ratio(lm, RIGHT_EYE, w, h)
         ear = (left_ear + right_ear) / 2.0
 
@@ -172,9 +172,9 @@ class BlinkDetector:
 
     def reset(self) -> None:
         """重置眨眼計數（每次門禁流程開始前呼叫）。"""
-        self._blink_count  = 0
+        self._blink_count = 0
         self._consec_count = 0
-        self._eye_closed   = False
+        self._eye_closed = False
         self._last_blink_t = time.time()
 
     def draw(self, frame: np.ndarray, result: BlinkResult) -> np.ndarray:
@@ -191,19 +191,41 @@ class BlinkDetector:
         h, w = frame.shape[:2]
         color = (0, 255, 0) if result.blink_confirmed else (0, 165, 255)
 
-        cv2.putText(frame, f"EAR: {result.ear:.3f}", (w - 200, 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-        cv2.putText(frame, f"Blinks: {result.blink_count}/{self.required_blinks}",
-                    (w - 200, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+        cv2.putText(
+            frame,
+            f"EAR: {result.ear:.3f}",
+            (w - 200, 40),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            color,
+            2,
+        )
+        cv2.putText(
+            frame,
+            f"Blinks: {result.blink_count}/{self.required_blinks}",
+            (w - 200, 75),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            color,
+            2,
+        )
         if result.is_closed:
-            cv2.putText(frame, "CLOSED", (w - 200, 110),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+            cv2.putText(
+                frame,
+                "CLOSED",
+                (w - 200, 110),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 0, 255),
+                2,
+            )
         return frame
 
 
 # ── Quick test ────────────────────────────────────────────────────────────────
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     import sys
+
     detector = BlinkDetector(required_blinks=2)
 
     # 用靜態圖片測試 EAR 計算
@@ -214,4 +236,6 @@ if __name__ == "__main__":
         sys.exit(1)
 
     result = detector.update(img)
-    print(f"EAR={result.ear:.4f}  is_closed={result.is_closed}  blinks={result.blink_count}")
+    print(
+        f"EAR={result.ear:.4f}  is_closed={result.is_closed}  blinks={result.blink_count}"
+    )

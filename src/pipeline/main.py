@@ -29,6 +29,7 @@ import threading
 
 # 加入專案根目錄至 path
 import sys
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.detection.detector import FaceDetector
@@ -114,9 +115,17 @@ def make_decision(
     # 條件 3：時間一致性（連續 3 幀）
     authorized, name = voter.vote(recog_result.name)
     if authorized:
-        return True, name, f"similarity={recog_result.similarity:.3f}, liveness={liveness_result.score:.3f}"
+        return (
+            True,
+            name,
+            f"similarity={recog_result.similarity:.3f}, liveness={liveness_result.score:.3f}",
+        )
 
-    return False, recog_result.name, f"waiting frames ({len(voter.buffer)}/{voter.required})"
+    return (
+        False,
+        recog_result.name,
+        f"waiting frames ({len(voter.buffer)}/{voter.required})",
+    )
 
 
 # ── Draw overlay ──────────────────────────────────────────────────────────────
@@ -139,8 +148,7 @@ def draw_overlay(
 
         # 標籤
         label = f"{name} ({face.confidence:.2f})"
-        cv2.putText(vis, label, (x1, y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+        cv2.putText(vis, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
 
         # 5 keypoints
         for kp in face.keypoints:
@@ -149,12 +157,18 @@ def draw_overlay(
 
         # 狀態訊息
         status = "ACCESS GRANTED" if granted else reason
-        cv2.putText(vis, status, (x1, y2 + 25),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+        cv2.putText(vis, status, (x1, y2 + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
     # FPS
-    cv2.putText(vis, f"FPS: {fps:.1f}", (20, 40),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 0), 2)
+    cv2.putText(
+        vis,
+        f"FPS: {fps:.1f}",
+        (20, 40),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1.0,
+        (255, 255, 0),
+        2,
+    )
 
     return vis
 
@@ -168,24 +182,26 @@ def run_pipeline(config: dict, display: bool = True) -> None:
         config:  config.yaml 內容
         display: 是否顯示即時畫面（headless 模式設為 False）
     """
-    #mqtt
+    # mqtt
     from src.mqtt.publisher import AccessPublisher
+
     publisher = AccessPublisher(
         broker=config["mqtt"]["broker"],
         port=config["mqtt"]["port"],
         topics=config["mqtt"]["topics"],
     )
-    publisher.start_heartbeat(fps_getter=lambda: fps if 'fps' in dir() else 0.0)
+    publisher.start_heartbeat(fps_getter=lambda: fps if "fps" in dir() else 0.0)
 
     cfg_models = config["models"]
-    cfg_recog  = config["recognition"]
+    cfg_recog = config["recognition"]
 
-    #blink
+    # blink
     from src.antispoof.blink import BlinkDetector
+
     blink_detector = BlinkDetector(required_blinks=2, reset_timeout=10.0)
 
     # 載入三個模型
-    detector   = FaceDetector(
+    detector = FaceDetector(
         engine_path=cfg_models["yolo"]["engine"],
         conf_threshold=0.5,
         input_size=cfg_models["yolo"]["input_size"],
@@ -195,7 +211,7 @@ def run_pipeline(config: dict, display: bool = True) -> None:
         db_path=cfg_recog["db_path"],
         threshold=cfg_recog["similarity_threshold"],
     )
-    antispoof  = AntiSpoof(
+    antispoof = AntiSpoof(
         onnx_path=cfg_models["minifasnet"]["engine"],
     )
 
@@ -230,14 +246,16 @@ def run_pipeline(config: dict, display: bool = True) -> None:
                     continue
 
                 # ── Process：辨識 + 活體 ─────────────────────────────────
-                recog   = recognizer.match(face.crop)
+                recog = recognizer.match(face.crop)
                 liveness = antispoof.predict(face.crop)
 
                 # ── Decide：三條件判斷 ───────────────────────────────────
                 blink_result = blink_detector.update(frame)
 
                 if not blink_result.blink_confirmed:
-                    decisions.append((False, recog.name, f"請眨眼 ({blink_result.blink_count}/2)"))
+                    decisions.append(
+                        (False, recog.name, f"請眨眼 ({blink_result.blink_count}/2)")
+                    )
                     continue
 
                 granted, name, reason = make_decision(recog, liveness, voter)
@@ -255,7 +273,9 @@ def run_pipeline(config: dict, display: bool = True) -> None:
                 if granted:
                     blink_detector.reset()
                     print(f"[ACCESS] 授權：{name}，門鎖開啟 3 秒")
-                    publisher.publish_event(name, recog.similarity, liveness.score, True, reason)
+                    publisher.publish_event(
+                        name, recog.similarity, liveness.score, True, reason
+                    )
                     publisher.publish_status("unlocked", name)
                     # TODO: Member B — gpio.unlock()
                     voter.reset()
@@ -264,9 +284,12 @@ def run_pipeline(config: dict, display: bool = True) -> None:
                         time.sleep(3)
                         publisher.publish_status("locked")
                         # TODO: Member B — gpio.lock()
+
                     threading.Thread(target=_lock_after_delay, daemon=True).start()
                 else:
-                    publisher.publish_event(name, recog.similarity, liveness.score, False, reason)
+                    publisher.publish_event(
+                        name, recog.similarity, liveness.score, False, reason
+                    )
                     # TODO: Member B — 若連續拒絕 N 次，呼叫 gpio.deny()，紅燈亮、buzzer 警告音
 
             # ── FPS 計算 ──────────────────────────────────────────────────
@@ -312,5 +335,5 @@ def main() -> None:
     run_pipeline(config, display=not args.no_display)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

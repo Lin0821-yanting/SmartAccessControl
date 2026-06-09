@@ -35,12 +35,14 @@ def build_face_db(
     detector = YOLO(yolo_weights, task="pose")
 
     print(f"[INFO] 載入 MobileFaceNet：{facenet_onnx}")
-    sess = ort.InferenceSession(facenet_onnx, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+    sess = ort.InferenceSession(
+        facenet_onnx, providers=["CUDAExecutionProvider", "CPUExecutionProvider"]
+    )
 
     # 載入現有 face_db（若存在）
     if db_path.exists():
         existing = np.load(str(db_path), allow_pickle=True).item()
-        names      = list(existing["names"])
+        names = list(existing["names"])
         embeddings = list(existing["embeddings"])
         print(f"[INFO] 現有 face_db：{names}")
     else:
@@ -70,7 +72,7 @@ def build_face_db(
 
             # 偵測人臉並裁切
             results = detector(img, imgsz=416, conf=0.5, verbose=False)
-            boxes   = results[0].boxes.xyxy.cpu().numpy()
+            boxes = results[0].boxes.xyxy.cpu().numpy()
             if len(boxes) == 0:
                 print(f"  [WARN] 未偵測到人臉：{img_path.name}")
                 continue
@@ -82,8 +84,8 @@ def build_face_db(
             face = cv2.resize(crop, (112, 112))
             face = cv2.cvtColor(face, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
             face = np.transpose(face, (2, 0, 1))[np.newaxis]
-            emb  = sess.run(["output0"], {"input0": face})[0][0]
-            emb  = emb / (np.linalg.norm(emb) + 1e-8)
+            emb = sess.run(["output0"], {"input0": face})[0][0]
+            emb = emb / (np.linalg.norm(emb) + 1e-8)
             person_embeddings.append(emb)
 
         if not person_embeddings:
@@ -103,7 +105,9 @@ def build_face_db(
             embeddings.append(avg_emb)
             print(f"  [ADD] {person_dir.name} 新增至 face_db")
 
-        print(f"  embedding norm：{np.linalg.norm(avg_emb):.4f}，使用 {len(person_embeddings)} 張")
+        print(
+            f"  embedding norm：{np.linalg.norm(avg_emb):.4f}，使用 {len(person_embeddings)} 張"
+        )
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     np.save(str(db_path), {"names": names, "embeddings": np.array(embeddings)})
@@ -113,11 +117,13 @@ def build_face_db(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Enrollment：建立人臉特徵資料庫")
     parser.add_argument("--enrollment_dir", type=str, default="data/enrollment")
-    parser.add_argument("--db_path",        type=str, default="data/face_db.npy")
-    parser.add_argument("--yolo",           type=str, default="models/weights/yolov8n-face.pt")
-    parser.add_argument("--facenet",        type=str, default="models/weights/MobileFaceNet.onnx")
-    parser.add_argument("--min_photos",     type=int, default=10)
-    parser.add_argument("--name",           type=str, default=None, help="只處理指定人員")
+    parser.add_argument("--db_path", type=str, default="data/face_db.npy")
+    parser.add_argument("--yolo", type=str, default="models/weights/yolov8n-face.pt")
+    parser.add_argument(
+        "--facenet", type=str, default="models/weights/MobileFaceNet.onnx"
+    )
+    parser.add_argument("--min_photos", type=int, default=10)
+    parser.add_argument("--name", type=str, default=None, help="只處理指定人員")
     args = parser.parse_args()
 
     build_face_db(

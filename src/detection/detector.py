@@ -20,9 +20,10 @@ from ultralytics import YOLO
 @dataclass
 class FaceDetection:
     """單一人臉偵測結果。"""
-    bbox: np.ndarray        # [x1, y1, x2, y2] float32
-    confidence: float       # 信心度 0~1
-    keypoints: np.ndarray   # (5, 2) float32，順序：左眼、右眼、鼻子、嘴左、嘴右
+
+    bbox: np.ndarray  # [x1, y1, x2, y2] float32
+    confidence: float  # 信心度 0~1
+    keypoints: np.ndarray  # (5, 2) float32，順序：左眼、右眼、鼻子、嘴左、嘴右
     crop: np.ndarray = field(default=None, repr=False)  # 裁切後的人臉 BGR
 
 
@@ -70,24 +71,26 @@ class FaceDetector:
         if result.boxes is None or len(result.boxes) == 0:
             return detections
 
-        boxes = result.boxes.xyxy.cpu().numpy()        # (N, 4)
-        confs = result.boxes.conf.cpu().numpy()        # (N,)
-        kpts = result.keypoints.xy.cpu().numpy()       # (N, 5, 2)
+        boxes = result.boxes.xyxy.cpu().numpy()  # (N, 4)
+        confs = result.boxes.conf.cpu().numpy()  # (N,)
+        kpts = result.keypoints.xy.cpu().numpy()  # (N, 5, 2)
 
         for i in range(len(boxes)):
             bbox = boxes[i].astype(np.float32)
             conf = float(confs[i])
-            keypoints = kpts[i].astype(np.float32)     # (5, 2)
+            keypoints = kpts[i].astype(np.float32)  # (5, 2)
 
             # 裁切人臉（加 20% padding）
             crop = self._crop_face(frame, bbox, padding=0.2)
 
-            detections.append(FaceDetection(
-                bbox=bbox,
-                confidence=conf,
-                keypoints=keypoints,
-                crop=crop,
-            ))
+            detections.append(
+                FaceDetection(
+                    bbox=bbox,
+                    confidence=conf,
+                    keypoints=keypoints,
+                    crop=crop,
+                )
+            )
 
         # 依信心度由高至低排序
         detections.sort(key=lambda d: d.confidence, reverse=True)
@@ -124,7 +127,7 @@ class FaceDetector:
 
 
 # ── Quick test ───────────────────────────────────────────────────────────────
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     import sys
 
     img_path = sys.argv[1] if len(sys.argv) > 1 else "data/enrollment/henry/0000.jpg"
@@ -138,4 +141,6 @@ if __name__ == "__main__":
     faces = detector.detect(img)
     print(f"偵測到 {len(faces)} 張人臉")
     for i, face in enumerate(faces):
-        print(f"  [{i}] conf={face.confidence:.3f}  bbox={face.bbox}  crop={face.crop.shape}")
+        print(
+            f"  [{i}] conf={face.confidence:.3f}  bbox={face.bbox}  crop={face.crop.shape}"
+        )
