@@ -1,3 +1,9 @@
+import sys
+from unittest.mock import MagicMock
+sys.modules["mediapipe"] = MagicMock()
+sys.modules["mediapipe.solutions"] = MagicMock()
+sys.modules["mediapipe.solutions.face_mesh"] = MagicMock()
+
 #!/usr/bin/env python3
 # copyright (c) 2026 GI104 henrytsai
 # Tatung University 14210 AI實務專題
