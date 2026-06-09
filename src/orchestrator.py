@@ -247,38 +247,39 @@ class Orchestrator:
     # ------------------------------------------------------------------
 
     def run(self) -> None:  # pragma: no cover
-        """Open camera, connect MQTT, and start the main pipeline loop.
-
-        Press Q or Ctrl-C to exit cleanly.
-        """
+        """Use camera input to drive the full pipeline until interrupted."""
         self._publisher.connect()
-
-        # Publish initial door state
         self._publisher.publish_status(
             door_state=self._door_state,
             last_person=self._last_person,
         )
-
-        # Start 1-Hz heartbeat daemon
         hb_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
         hb_thread.start()
 
+        # Try GStreamer CSI camera first; fall back to static blank frame
+        # for headless Docker environments without nvarguscamerasrc.
         cap = cv2.VideoCapture(_gstreamer_pipeline(), cv2.CAP_GSTREAMER)
-        if not cap.isOpened():
-            raise RuntimeError("Cannot open CSI camera — check GStreamer pipeline")
+        use_static_frame = not cap.isOpened()
+        if use_static_frame:
+            logger.warning("Cannot open CSI camera — running with static blank frame")
+            cap = None
+        else:
+            logger.info("Orchestrator: pipeline started")
 
-        logger.info("Orchestrator: pipeline started")
         print("\n[Orchestrator] Running. Press Q or Ctrl-C to stop.\n")
 
         try:
             while True:
-                ret, frame = cap.read()
-                if not ret:
-                    continue
+                if use_static_frame:
+                    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+                else:
+                    ret, frame = cap.read()
+                    if not ret:
+                        continue
 
                 self._tick(frame)
 
-                if self._display:
+                if self._display and not use_static_frame:
                     cv2.imshow("Smart Access Control", frame)
                     if cv2.waitKey(1) & 0xFF in (ord("q"), 27):
                         break
@@ -286,7 +287,8 @@ class Orchestrator:
         except KeyboardInterrupt:
             print("\n[Orchestrator] Interrupted.")
         finally:
-            cap.release()
+            if cap is not None:
+                cap.release()
             if self._display:
                 cv2.destroyAllWindows()
             self._actuator.cleanup()
