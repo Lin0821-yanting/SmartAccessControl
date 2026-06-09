@@ -71,6 +71,7 @@ jobs:
             "opencv-python==4.10.0.84" \
             "paho-mqtt==2.1.0" \
             gpiod \
+            onnxruntime \
             pyyaml
 
       - name: Run pytest with coverage gate
@@ -214,6 +215,7 @@ jobs:
             "opencv-python==4.10.0.84" \
             "paho-mqtt==2.1.0" \
             gpiod \
+            onnxruntime \
             pyyaml \
             --break-system-packages \
             --quiet
