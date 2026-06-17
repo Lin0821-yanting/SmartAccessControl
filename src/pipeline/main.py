@@ -24,6 +24,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 import threading
@@ -36,6 +37,8 @@ import numpy as np
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+logger = logging.getLogger(__name__)
 
 from src.actuator_controller import ActuatorController
 from src.antispoof.antispoof import AntiSpoof
@@ -308,8 +311,10 @@ def run_pipeline(config: dict, display: bool = True) -> None:
                     pipeline_stage=pipeline_stage,
                     container_uptime_s=int(time.monotonic() - start_time),
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                # Heartbeat is best-effort telemetry; never let a transient
+                # MQTT hiccup kill the daemon thread, but do record it.
+                logger.debug("heartbeat publish failed: %s", exc)
 
     hb_thread = threading.Thread(target=heartbeat_loop, daemon=True)
     hb_thread.start()
