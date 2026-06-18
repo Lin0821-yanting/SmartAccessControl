@@ -125,8 +125,8 @@ class TestTickGate:
         mocks["detector"].detect.assert_not_called()
 
     def test_gate_closed_large_distance_skips_pipeline(self, orc, mocks):
-        """Distance >= 60 cm must skip AI pipeline."""
-        with patch.object(orc._sensor, "_measure_distance", return_value=80.0):
+        """Distance >= 100 cm must skip AI pipeline."""
+        with patch.object(orc._sensor, "_measure_distance", return_value=120.0):
             orc._tick(_blank())
         mocks["detector"].detect.assert_not_called()
 
@@ -138,7 +138,7 @@ class TestTickGate:
         mocks["detector"].detect.assert_not_called()
 
     def test_gate_open_calls_detector(self, orc, mocks):
-        """Distance < 60 cm with no cooldown must call detector."""
+        """Distance < 100 cm with no cooldown must call detector."""
         mocks["detector"].detect.return_value = []
         with patch.object(orc._sensor, "_measure_distance", return_value=40.0):
             orc._tick(_blank())

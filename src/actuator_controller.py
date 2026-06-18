@@ -153,7 +153,7 @@ class ActuatorController:
                 daemon=False,
             )
             led_thread.start()
-            self._multi_beep(_ALERT_BEEPS)
+            # self._multi_beep(_ALERT_BEEPS)
             led_thread.join()
         finally:
             self._lock.release()

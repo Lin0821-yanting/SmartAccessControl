@@ -33,6 +33,12 @@ services:
   access-control:
     image: ghcr.io/lin0821-yanting/smartaccesscontrol:${IMAGE_TAG:-latest}
     runtime: nvidia
+    privileged: true
+    # Direction C: 容器內無法直接開 CSI（Argus EGLDisplay 初始化失敗），改由
+    # host 的 start_camera_bridge.sh 經 POSIX 共享記憶體餵影格。
+    # ipc: host → 容器與 host 共用 /dev/shm，shmsrc 才看得到 shmsink 的物件。
+    ipc: host
+    command: ["python3", "src/pipeline/main.py", "--no-display", "--source", "shm"]
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -40,6 +46,13 @@ services:
       - MQTT_BROKER=mosquitto
       - MQTT_PORT=1883
       - JETSON_TESTING_MODEL_NAME=JETSON_ORIN_NANO
+      - CAMERA_SOURCE=shm
+      - CAMERA_SHM_SOCKET=/tmp/camshm/cam
+      - CAMERA_SHM_WIDTH=1280
+      - CAMERA_SHM_HEIGHT=720
+      - CAMERA_SHM_FPS=30
+    group_add:
+      - video
     volumes:
       - engine-cache:/app/models/engines
       - /home/jetson/SmartAccessControl/data:/app/data
@@ -47,14 +60,11 @@ services:
       - /home/jetson/.local/lib/python3.10/site-packages/onnxruntime:/usr/local/lib/python3.10/dist-packages/onnxruntime:ro
       - /home/jetson/SmartAccessControl/.venv/lib/python3.10/site-packages/gpiod.cpython-310-aarch64-linux-gnu.so:/usr/local/lib/python3.10/dist-packages/gpiod.cpython-310-aarch64-linux-gnu.so:ro
       - /usr/lib/aarch64-linux-gnu/libgpiod.so.2:/usr/lib/aarch64-linux-gnu/libgpiod.so.2:ro
-      - /usr/lib/aarch64-linux-gnu/gstreamer-1.0:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:ro
-      - /usr/lib/aarch64-linux-gnu/nvidia:/usr/lib/aarch64-linux-gnu/nvidia:ro
-      - /usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/tegra:ro
-      - /tmp/argus_socket:/tmp/argus_socket
+      # Direction C 相機橋接：host shmsink socket 目錄（須與 bridge 腳本一致）
+      - /tmp/camshm:/tmp/camshm
     devices:
       - /dev/gpiochip0:/dev/gpiochip0
       - /dev/gpiochip1:/dev/gpiochip1
-      - /dev/video0:/dev/video0
     restart: unless-stopped
 
 volumes:

@@ -75,10 +75,12 @@ class TestAlertUnknown:
         ctrl.alert_unknown()
         mock_led.indicate.assert_called_once_with(success=False, duration=_DENY_LED_S)
 
-    def test_buzzer_beeps_correct_number_of_times(self, mocks):
+    def test_buzzer_is_silent_on_unknown(self, mocks):
+        # UNKNOWN intentionally does NOT beep (only SPOOF alerts with the buzzer)
+        # — see README.md problem-3 rationale: avoid nuisance beeping at people.
         _, mock_buzzer, _, ctrl = mocks
         ctrl.alert_unknown()
-        assert mock_buzzer._beep.call_count == _ALERT_BEEPS
+        assert mock_buzzer._beep.call_count == 0
 
     def test_buzzer_beep_duration_is_correct(self, mocks):
         _, mock_buzzer, _, ctrl = mocks

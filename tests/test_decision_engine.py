@@ -133,8 +133,10 @@ class TestSpecifiedScenarios:
         self, engine: DecisionEngine
     ) -> None:
         """After a frame drop the system can still GRANT on a fresh sequence."""
-        # Cause a reset
-        engine.evaluate(similarity=0.50, anti_spoof_pass=True, face_in_db=True)
+        # Cause a reset: a below-threshold similarity yields DENY → counter reset.
+        engine.evaluate(
+            similarity=SIMILARITY_THRESHOLD - 0.2, anti_spoof_pass=True, face_in_db=True
+        )
         # Now run a full clean sequence
         decisions = _pass_frames(engine, REQUIRED_CONSECUTIVE_FRAMES)
         assert decisions[-1] is Decision.GRANT
@@ -253,7 +255,7 @@ class TestBoundaryValues:
         engine.evaluate(similarity=0.5, anti_spoof_pass=True, face_in_db=True)
         assert engine.consecutive_frames == 0
 
-    @pytest.mark.parametrize("sim", [0.0, 0.5, 0.849])
+    @pytest.mark.parametrize("sim", [0.0, SIMILARITY_THRESHOLD - 0.2, SIMILARITY_THRESHOLD - 0.001])
     def test_b1_various_below_threshold_all_deny(self, engine: DecisionEngine, sim: float) -> None:
         """Any similarity below SIMILARITY_THRESHOLD with face_in_db=True yields DENY."""
         result = engine.evaluate(similarity=sim, anti_spoof_pass=True, face_in_db=True)

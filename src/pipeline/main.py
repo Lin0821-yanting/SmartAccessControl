@@ -123,6 +123,94 @@ def gstreamer_pipeline(
 
 
 # ---------------------------------------------------------------------------
+# Shared-memory camera source (Direction C: host shmsink → container shmsrc)
+#
+# Why this exists: inside the container the CSI camera (nvarguscamerasrc /
+# Argus) cannot initialise an EGLDisplay, so the container cannot open the CSI
+# camera directly. Instead the host runs a tiny capture pipeline that pushes
+# decoded BGR frames into POSIX shared memory via `shmsink`; the container
+# reads them back via `shmsrc`. The container's cv2 is built WITHOUT GStreamer,
+# so we pull frames through PyGObject (Gst appsink) and expose a cv2-compatible
+# read()/isOpened()/release() interface — the main loop stays unchanged.
+#
+# Requires the container to run with `--ipc=host` (POSIX shm lives in /dev/shm)
+# and the shmsink socket directory mounted (see deploy/docker-compose.yml).
+# Host side is started by deploy/start_camera_bridge.sh.
+# ---------------------------------------------------------------------------
+_SHM_SOCKET: str = os.environ.get("CAMERA_SHM_SOCKET", "/tmp/camshm/cam")
+_SHM_WIDTH: int = int(os.environ.get("CAMERA_SHM_WIDTH", "1280"))
+_SHM_HEIGHT: int = int(os.environ.get("CAMERA_SHM_HEIGHT", "720"))
+_SHM_FPS: int = int(os.environ.get("CAMERA_SHM_FPS", "30"))
+
+
+class GstShmCapture:
+    """Read BGR frames from a host `shmsink` via PyGObject Gst appsink.
+
+    Drop-in replacement for ``cv2.VideoCapture`` (exposes ``isOpened()``,
+    ``read()``, ``release()``) so :func:`run_pipeline` works unchanged whether
+    the source is the CSI camera (cv2) or the shared-memory bridge (this class).
+    """
+
+    def __init__(
+        self,
+        socket_path: str = _SHM_SOCKET,
+        width: int = _SHM_WIDTH,
+        height: int = _SHM_HEIGHT,
+        framerate: int = _SHM_FPS,
+        read_timeout_s: float = 2.0,
+    ) -> None:
+        import gi  # lazy import: only the container/shm path needs PyGObject
+
+        gi.require_version("Gst", "1.0")
+        from gi.repository import Gst
+
+        self._Gst = Gst
+        if not Gst.is_initialized():
+            Gst.init(None)
+
+        self._width = width
+        self._height = height
+        self._timeout_ns = int(read_timeout_s * Gst.SECOND)
+
+        pipe = (
+            f"shmsrc socket-path={socket_path} ! "
+            f"video/x-raw,format=BGR,width={width},height={height},"
+            f"framerate={framerate}/1 ! videoconvert ! "
+            "appsink name=sink emit-signals=false sync=false "
+            "max-buffers=2 drop=true"
+        )
+        self._pipeline = Gst.parse_launch(pipe)
+        self._sink = self._pipeline.get_by_name("sink")
+        ret = self._pipeline.set_state(Gst.State.PLAYING)
+        self._opened = ret != Gst.StateChangeReturn.FAILURE
+
+    def isOpened(self) -> bool:  # noqa: N802 (cv2-compatible name)
+        return self._opened
+
+    def read(self) -> tuple[bool, np.ndarray | None]:
+        """Pull one frame. Returns (True, BGR ndarray) or (False, None)."""
+        Gst = self._Gst
+        sample = self._sink.emit("try-pull-sample", self._timeout_ns)
+        if sample is None:
+            return False, None
+        buf = sample.get_buffer()
+        success, mapinfo = buf.map(Gst.MapFlags.READ)
+        if not success:
+            return False, None
+        try:
+            frame = np.frombuffer(mapinfo.data, dtype=np.uint8).reshape(
+                (self._height, self._width, 3)
+            ).copy()  # copy: buffer is unmapped right after
+        finally:
+            buf.unmap(mapinfo)
+        return True, frame
+
+    def release(self) -> None:
+        self._pipeline.set_state(self._Gst.State.NULL)
+        self._opened = False
+
+
+# ---------------------------------------------------------------------------
 # System metric helpers (same as orchestrator.py)
 # ---------------------------------------------------------------------------
 def _read_cpu_temp() -> float:
@@ -243,8 +331,13 @@ def draw_overlay(
 # ---------------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------------
-def run_pipeline(config: dict, display: bool = True) -> None:
-    """主要 pipeline 迴圈：Sense → Process → Decide → Act → Publish。"""
+def run_pipeline(config: dict, display: bool = True, source: str = "csi") -> None:
+    """主要 pipeline 迴圈：Sense → Process → Decide → Act → Publish。
+
+    source:
+        "csi" — 直接開 CSI 相機（host 原生跑，預設）。
+        "shm" — 從 host shmsink 經共享記憶體讀影格（容器內 demo 用）。
+    """
 
     cfg_models = config["models"]
     cfg_recog = config["recognition"]
@@ -320,9 +413,19 @@ def run_pipeline(config: dict, display: bool = True) -> None:
     hb_thread.start()
 
     # ── Camera ────────────────────────────────────────────────────────────
-    cap = cv2.VideoCapture(gstreamer_pipeline(), cv2.CAP_GSTREAMER)
-    if not cap.isOpened():
-        raise RuntimeError("無法開啟 CSI 相機")
+    if source == "shm":
+        cap = GstShmCapture()
+        if not cap.isOpened():
+            raise RuntimeError(
+                f"無法開啟共享記憶體相機源（socket={_SHM_SOCKET}）。"
+                "請先在 host 執行 deploy/start_camera_bridge.sh"
+            )
+        print(f"[Pipeline] 相機源：shm（{_SHM_WIDTH}x{_SHM_HEIGHT}@{_SHM_FPS}）")
+    else:
+        cap = cv2.VideoCapture(gstreamer_pipeline(), cv2.CAP_GSTREAMER)
+        if not cap.isOpened():
+            raise RuntimeError("無法開啟 CSI 相機")
+        print("[Pipeline] 相機源：csi（nvarguscamerasrc）")
 
     print(
         f"[Pipeline] gate={_GATE_DISTANCE_CM:.0f}cm  "
@@ -552,10 +655,16 @@ def main() -> None:
         action="store_true",
         help="headless 模式（不顯示畫面）",
     )
+    parser.add_argument(
+        "--source",
+        choices=["csi", "shm"],
+        default=os.environ.get("CAMERA_SOURCE", "csi"),
+        help="相機來源：csi=直接開 CSI（host）；shm=共享記憶體橋接（容器）",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
-    run_pipeline(config, display=not args.no_display)
+    run_pipeline(config, display=not args.no_display, source=args.source)
 
 
 if __name__ == "__main__":
