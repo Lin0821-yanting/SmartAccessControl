@@ -11,3 +11,5 @@ __pypackages__/
 __pycache__/
 *.engine
 models/
+dist/
+logs/
