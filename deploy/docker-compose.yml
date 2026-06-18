@@ -53,12 +53,15 @@ services:
       - CAMERA_SHM_FPS=30
     group_add:
       - video
+    # Path overrides (no hardcoded host paths — reproducible across machines):
+    #   PROJECT_ROOT     repo root (default: .. , i.e. the dir above deploy/)
+    #   ONNXRUNTIME_PATH host onnxruntime site-package (default: ~/.local/...)
     volumes:
       - engine-cache:/app/models/engines
-      - /home/jetson/SmartAccessControl/data:/app/data
-      - /home/jetson/SmartAccessControl/models/weights:/app/models/weights:ro
-      - /home/jetson/.local/lib/python3.10/site-packages/onnxruntime:/usr/local/lib/python3.10/dist-packages/onnxruntime:ro
-      - /home/jetson/SmartAccessControl/.venv/lib/python3.10/site-packages/gpiod.cpython-310-aarch64-linux-gnu.so:/usr/local/lib/python3.10/dist-packages/gpiod.cpython-310-aarch64-linux-gnu.so:ro
+      - ${PROJECT_ROOT:-..}/data:/app/data
+      - ${PROJECT_ROOT:-..}/models/weights:/app/models/weights:ro
+      - ${ONNXRUNTIME_PATH:-${HOME}/.local/lib/python3.10/site-packages/onnxruntime}:/usr/local/lib/python3.10/dist-packages/onnxruntime:ro
+      - ${PROJECT_ROOT:-..}/.venv/lib/python3.10/site-packages/gpiod.cpython-310-aarch64-linux-gnu.so:/usr/local/lib/python3.10/dist-packages/gpiod.cpython-310-aarch64-linux-gnu.so:ro
       - /usr/lib/aarch64-linux-gnu/libgpiod.so.2:/usr/lib/aarch64-linux-gnu/libgpiod.so.2:ro
       # Direction C 相機橋接：host shmsink socket 目錄（須與 bridge 腳本一致）
       - /tmp/camshm:/tmp/camshm
