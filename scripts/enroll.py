@@ -105,9 +105,7 @@ def build_face_db(
             embeddings.append(avg_emb)
             print(f"  [ADD] {person_dir.name} 新增至 face_db")
 
-        print(
-            f"  embedding norm：{np.linalg.norm(avg_emb):.4f}，使用 {len(person_embeddings)} 張"
-        )
+        print(f"  embedding norm：{np.linalg.norm(avg_emb):.4f}，使用 {len(person_embeddings)} 張")
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     np.save(str(db_path), {"names": names, "embeddings": np.array(embeddings)})
@@ -119,9 +117,7 @@ def main() -> None:
     parser.add_argument("--enrollment_dir", type=str, default="data/enrollment")
     parser.add_argument("--db_path", type=str, default="data/face_db.npy")
     parser.add_argument("--yolo", type=str, default="models/weights/yolov8n-face.pt")
-    parser.add_argument(
-        "--facenet", type=str, default="models/weights/MobileFaceNet.onnx"
-    )
+    parser.add_argument("--facenet", type=str, default="models/weights/MobileFaceNet.onnx")
     parser.add_argument("--min_photos", type=int, default=10)
     parser.add_argument("--name", type=str, default=None, help="只處理指定人員")
     args = parser.parse_args()

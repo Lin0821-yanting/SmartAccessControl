@@ -1,0 +1,95 @@
+# Copyright (c) 2026 Yanting Lin, henrytsai
+# Tatung University — I4210 AI實務專題
+# .github/workflows/deploy.yml — tag-triggered production deploy
+#
+# Triggers on semver tag push: v1.0.0, v1.2.3, etc.
+#
+# Flow:
+#   1. Re-tag the existing SHA image (built by ci.yml) as semver — no rebuild.
+#   2. Prompt for manual approval (production environment with required reviewer).
+#   3. On approval: run deploy.sh on the Jetson runner.
+#
+# Why re-tag instead of rebuild?
+#   The SHA-tagged image from ci.yml has already passed all five pipeline gates.
+#   Re-tagging the same image digest ensures what we tested is what we deploy.
+
+name: Deploy
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'   # matches v1.0.0, v2.3.1, etc.
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    name: Tag-triggered deploy to Jetson
+    runs-on: [self-hosted, linux, arm64, jetson]
+
+    # production environment requires a human reviewer to approve.
+    # Set up in: repo Settings → Environments → production → Required reviewers
+    environment:
+      name: production
+      url: >-
+        https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Re-tag: sha-<commit> → v1.0.0 / v1.0 / v1 / latest ──────────────
+      # Finds the SHA image that was pushed by ci.yml for this exact commit.
+      # No Docker build happens here — just manifest pointer updates.
+      - name: Set up Buildx (needed for imagetools)
+        uses: docker/setup-buildx-action@v4
+
+      - name: Re-tag SHA image as semver (no rebuild)
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          SRC="ghcr.io/${REPO}:sha-${SHORT_SHA}"
+          MAJ="${TAG%%.*}"           # v1
+          MIN="${TAG%.*}"            # v1.0
+
+          echo "Source image : $SRC"
+          echo "Semver tags  : $TAG  $MIN  $MAJ  latest"
+
+          for NEW in "$TAG" "$MIN" "$MAJ" "latest"; do
+            docker buildx imagetools create \
+              -t "ghcr.io/${REPO}:${NEW}" \
+              "$SRC"
+            echo "  Tagged: ghcr.io/${REPO}:${NEW}"
+          done
+
+      # ── Deploy on Jetson ──────────────────────────────────────────────────
+      # Runner is already on the Jetson, so deploy.sh runs locally.
+      # nvpmodel and jetson_clocks have NOPASSWD sudo (from runner setup).
+      - name: Run deploy.sh
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          chmod +x deploy/deploy.sh deploy/healthcheck.sh deploy/rollback.sh
+          bash deploy/deploy.sh "$TAG"
+
+      # ── Post deploy status ────────────────────────────────────────────────
+      - name: Confirm running image tag
+        run: |
+          echo "=== Running containers after deploy ==="
+          docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
+          echo ""
+          echo "=== State file ==="
+          cat /var/lib/smartaccess/deployed.txt || echo "(state file not found)"
+          echo ""
+          echo "=== Last 5 deploy history entries ==="
+          tail -5 /var/lib/smartaccess/deployed.txt.history 2>/dev/null || echo "(no history)"

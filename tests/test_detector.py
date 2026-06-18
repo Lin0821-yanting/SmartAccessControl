@@ -5,16 +5,16 @@
 """Unit tests for src/detection/detector.py."""
 
 import sys
-
-# 1. 物理洗清全域 Mock 污染
-for key in list(sys.modules.keys()):
-    if "src.detection" in key:
-        sys.modules.pop(key, None)
+from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
-from unittest.mock import MagicMock, patch
-from src.detection.detector import FaceDetector
+
+# 移除 conftest 對 src.detection 的 stub，改用真實模組（ultralytics/cv2 已由
+# conftest stub，CI 上可正常 import）。
+for _key in [k for k in sys.modules if "src.detection" in k]:
+    sys.modules.pop(_key, None)
+
+from src.detection.detector import FaceDetector  # noqa: E402
 
 
 class TestFaceDetector:
@@ -25,9 +25,7 @@ class TestFaceDetector:
             detector = FaceDetector("fake_yolo.engine")
 
             # 2. 直接針對 detect 方法進行局部 mock，確保它回傳預期的資料結構
-            detector.detect = MagicMock(
-                return_value=[{"bbox": [10, 20, 110, 120], "conf": 0.95}]
-            )
+            detector.detect = MagicMock(return_value=[{"bbox": [10, 20, 110, 120], "conf": 0.95}])
 
             dummy_frame = np.zeros((416, 416, 3), dtype=np.uint8)
             faces = detector.detect(dummy_frame)
@@ -36,7 +34,7 @@ class TestFaceDetector:
 
 
 class TestFaceDetectorInference:
-    """測試 detect() 內部推論邏輯。"""
+    """測試 detect() 內部推論邏輯."""
 
     def _make_detector(self):
         with patch("src.detection.detector.YOLO") as mock_yolo_cls:
@@ -54,13 +52,9 @@ class TestFaceDetectorInference:
         boxes.xyxy.cpu.return_value.numpy.return_value = np.array(
             [[100, 100, 200, 200]] * n_faces, dtype=np.float32
         )
-        boxes.conf.cpu.return_value.numpy.return_value = np.array(
-            [0.9] * n_faces, dtype=np.float32
-        )
+        boxes.conf.cpu.return_value.numpy.return_value = np.array([0.9] * n_faces, dtype=np.float32)
         kpts = MagicMock()
-        kpts.xy.cpu.return_value.numpy.return_value = np.zeros(
-            (n_faces, 5, 2), dtype=np.float32
-        )
+        kpts.xy.cpu.return_value.numpy.return_value = np.zeros((n_faces, 5, 2), dtype=np.float32)
         result.boxes = boxes
         result.keypoints = kpts
         return [result]
@@ -93,13 +87,9 @@ class TestFaceDetectorInference:
         boxes.xyxy.cpu.return_value.numpy.return_value = np.array(
             [[0, 0, 100, 100], [100, 100, 200, 200]], dtype=np.float32
         )
-        boxes.conf.cpu.return_value.numpy.return_value = np.array(
-            [0.6, 0.9], dtype=np.float32
-        )
+        boxes.conf.cpu.return_value.numpy.return_value = np.array([0.6, 0.9], dtype=np.float32)
         kpts = MagicMock()
-        kpts.xy.cpu.return_value.numpy.return_value = np.zeros(
-            (2, 5, 2), dtype=np.float32
-        )
+        kpts.xy.cpu.return_value.numpy.return_value = np.zeros((2, 5, 2), dtype=np.float32)
         result.boxes = boxes
         result.keypoints = kpts
         self.mock_model.return_value = [result]

@@ -51,21 +51,20 @@ else:
     _gpiod_mock.LINE_REQ_DIR_IN = 2
 
 # Now safe to import the modules under test
-from src.led import GREEN_LED_HOLD_S, LED, RED_LED_HOLD_S  # noqa: E402
-from src.buzzer import BEEP_OFF_S, BEEP_ON_S, LONG_BEEP_S, Buzzer  # noqa: E402
-from src.servo import (  # noqa: E402
+from src.buzzer import BEEP_OFF_S, BEEP_ON_S, LONG_BEEP_S, Buzzer
+from src.hc_sr04 import (
+    APPROACH_THRESHOLD_CM,
+    POLL_INTERVAL_S,
+    SPEED_OF_SOUND_CM_PER_S,
+    HcSr04,
+)
+from src.led import GREEN_LED_HOLD_S, LED, RED_LED_HOLD_S
+from src.servo import (
     PULSE_LOCKED_MS,
     PULSE_UNLOCKED_MS,
     UNLOCK_HOLD_S,
     Servo,
 )
-from src.hc_sr04 import (  # noqa: E402
-    APPROACH_THRESHOLD_CM,
-    HcSr04,
-    POLL_INTERVAL_S,
-    SPEED_OF_SOUND_CM_PER_S,
-)
-
 
 # ===========================================================================
 # Helpers
@@ -136,9 +135,7 @@ class TestLED:
             (False, RED_LED_HOLD_S),
         ],
     )
-    def test_indicate_default_duration(
-        self, success: bool, expected_duration: float
-    ) -> None:
+    def test_indicate_default_duration(self, success: bool, expected_duration: float) -> None:
         """indicate() without explicit duration uses the module-level constant."""
         led = LED(green_pin=7, red_pin=11)
         with patch("time.sleep") as mock_sleep:
@@ -238,93 +235,94 @@ class TestBuzzer:
 
 
 # ===========================================================================
-# Servo tests  (≥ 6)  — gpiod software PWM
+# Servo tests  (≥ 6)  — gpiod synchronous burst-pulse PWM
 # ===========================================================================
 
 
 class TestServo:
-    """Tests for the Servo SG90 class (gpiod software PWM on Yahboom board)."""
+    """Tests for the Servo SG90 class (gpiod synchronous burst-pulse PWM).
+
+    ``_goto()`` is the only method that touches real hardware (it is also
+    marked ``# pragma: no cover``).  All tests patch it out so they run
+    on any x86 CI runner without a real Jetson.
+    """
 
     @pytest.fixture(autouse=True)
-    def mock_gpiod_and_pwm(self):
-        """Mock gpiod chip/line and _SoftPWM to avoid real hardware and threads."""
+    def mock_gpiod(self):
+        """Mock gpiod chip/line to satisfy __init__ without real hardware."""
         mock_chip = MagicMock()
         mock_line = MagicMock()
         mock_chip.get_line.return_value = mock_line
-        mock_pwm_instance = MagicMock()
 
-        with (
-            patch("src.servo.gpiod") as mock_gpiod_mod,
-            patch("src.servo._SoftPWM", return_value=mock_pwm_instance),
-        ):
+        with patch("src.servo.gpiod") as mock_gpiod_mod:
             mock_gpiod_mod.Chip.return_value = mock_chip
             mock_gpiod_mod.LINE_REQ_DIR_OUT = 1
             self.mock_chip = mock_chip
             self.mock_line = mock_line
-            self.mock_pwm = mock_pwm_instance
             yield
 
-    def test_init_starts_pwm_at_locked_pulse(self) -> None:
-        """Constructor must start PWM at PULSE_LOCKED_MS (locked position)."""
-        Servo()
-        self.mock_pwm.start.assert_called_once_with(PULSE_LOCKED_MS)
+    def test_init_drives_to_locked_position(self) -> None:
+        """Constructor must call _goto with PULSE_LOCKED_MS (locked position)."""
+        with patch.object(Servo, "_goto") as mock_goto:
+            Servo()
+        mock_goto.assert_called_once_with(PULSE_LOCKED_MS)
 
     def test_init_requests_line_as_output(self) -> None:
         """Constructor must request the gpiod line as DIR_OUT."""
-        Servo()
+        with patch.object(Servo, "_goto"):
+            Servo()
         self.mock_line.request.assert_called_once()
 
-    def test_set_lock_true_applies_locked_pulse(self) -> None:
-        """set_lock(True) must call set_pulse with PULSE_LOCKED_MS."""
-        servo = Servo()
-        self.mock_pwm.reset_mock()
-        servo.set_lock(locked=True)
-        self.mock_pwm.set_pulse.assert_called_once_with(PULSE_LOCKED_MS)
+    def test_set_lock_true_calls_goto_with_locked_pulse(self) -> None:
+        """set_lock(True) must call _goto with PULSE_LOCKED_MS."""
+        with patch.object(Servo, "_goto") as mock_goto:
+            servo = Servo()
+            mock_goto.reset_mock()
+            servo.set_lock(locked=True)
+        mock_goto.assert_called_once_with(PULSE_LOCKED_MS)
 
-    def test_set_lock_false_applies_unlocked_pulse(self) -> None:
-        """set_lock(False) must call set_pulse with PULSE_UNLOCKED_MS."""
-        servo = Servo()
-        self.mock_pwm.reset_mock()
-        servo.set_lock(locked=False)
-        self.mock_pwm.set_pulse.assert_called_once_with(PULSE_UNLOCKED_MS)
+    def test_set_lock_false_calls_goto_with_unlocked_pulse(self) -> None:
+        """set_lock(False) must call _goto with PULSE_UNLOCKED_MS."""
+        with patch.object(Servo, "_goto") as mock_goto:
+            servo = Servo()
+            mock_goto.reset_mock()
+            servo.set_lock(locked=False)
+        mock_goto.assert_called_once_with(PULSE_UNLOCKED_MS)
 
     @pytest.mark.parametrize("pulse_ms", [1.0, 1.25, 1.5, 1.75, 2.0])
     def test_set_angle_passes_pulse_through(self, pulse_ms: float) -> None:
-        """set_angle() must forward pulse_ms value to _SoftPWM.set_pulse."""
-        servo = Servo()
-        self.mock_pwm.reset_mock()
-        servo.set_angle(pulse_ms)
-        self.mock_pwm.set_pulse.assert_called_once_with(pulse_ms)
+        """set_angle() must forward pulse_ms value directly to _goto."""
+        with patch.object(Servo, "_goto") as mock_goto:
+            servo = Servo()
+            mock_goto.reset_mock()
+            servo.set_angle(pulse_ms)
+        mock_goto.assert_called_once_with(pulse_ms)
 
     def test_unlock_then_relock_sequence(self) -> None:
-        """unlock_then_relock() must unlock → sleep → relock in order."""
-        servo = Servo()
-        self.mock_pwm.reset_mock()
-        with patch("time.sleep") as mock_sleep:
+        """unlock_then_relock() must: _goto(unlock) → sleep(UNLOCK_HOLD_S) → _goto(lock)."""
+        with patch.object(Servo, "_goto") as mock_goto, patch("src.servo.time.sleep") as mock_sleep:
+            servo = Servo()
+            mock_goto.reset_mock()
             servo.unlock_then_relock()
-        calls = self.mock_pwm.set_pulse.call_args_list
-        assert calls[0] == call(PULSE_UNLOCKED_MS)
-        assert calls[1] == call(PULSE_LOCKED_MS)
+        assert mock_goto.call_args_list[0] == call(PULSE_UNLOCKED_MS)
+        assert mock_goto.call_args_list[1] == call(PULSE_LOCKED_MS)
         mock_sleep.assert_called_once_with(UNLOCK_HOLD_S)
 
-    def test_cleanup_stops_pwm_and_releases_line(self) -> None:
-        """cleanup() must stop PWM, release the gpiod line, and close the chip."""
-        servo = Servo()
-        self.mock_pwm.reset_mock()
-        with patch("time.sleep"):
+    def test_cleanup_releases_line_and_closes_chip(self) -> None:
+        """cleanup() must release the gpiod line and close the chip."""
+        with patch.object(Servo, "_goto"):
+            servo = Servo()
             servo.cleanup()
-        self.mock_pwm.stop.assert_called_once()
         self.mock_line.release.assert_called_once()
         self.mock_chip.close.assert_called_once()
 
-    def test_cleanup_relocks_before_stop(self) -> None:
-        """cleanup() must set PULSE_LOCKED_MS before stopping the PWM."""
-        servo = Servo()
-        self.mock_pwm.reset_mock()
-        with patch("time.sleep"):
+    def test_cleanup_relocks_before_release(self) -> None:
+        """cleanup() must call _goto(PULSE_LOCKED_MS) before releasing line."""
+        with patch.object(Servo, "_goto") as mock_goto:
+            servo = Servo()
+            mock_goto.reset_mock()
             servo.cleanup()
-        first_pulse_call = self.mock_pwm.set_pulse.call_args_list[0]
-        assert first_pulse_call == call(PULSE_LOCKED_MS)
+        mock_goto.assert_called_once_with(PULSE_LOCKED_MS)
 
 
 # ===========================================================================
@@ -410,14 +408,13 @@ class TestHCSR04:
         with patch("time.sleep"):
             sensor = HcSr04(trigger_pin=31, echo_pin=15)
 
-        # Patch GPIO.input to return HIGH (stuck), and mock _recover_stuck_echo
+        # 正確寫法：patch 實例方法，而不是模組函數
         with (
             patch.object(sensor, "_recover_stuck_echo", return_value=False) as mock_rec,
             patch("src.hc_sr04.GPIO") as mock_gpio,
         ):
-            mock_gpio.HIGH = 1
             mock_gpio.LOW = 0
-            mock_gpio.input.return_value = mock_gpio.HIGH  # ECHO stuck HIGH
+            mock_gpio.input.return_value = mock_gpio.HIGH
             dist = sensor._measure_distance()
 
         mock_rec.assert_called_once()
@@ -462,9 +459,7 @@ class TestHCSR04:
         """_confirmed_near() must return False when only 1 of 3 reads is near."""
         with patch("time.sleep"):
             sensor = HcSr04(trigger_pin=31, echo_pin=15, threshold_cm=60.0)
-        with patch.object(
-            sensor, "_measure_distance", side_effect=[30.0, 100.0, 100.0]
-        ):
+        with patch.object(sensor, "_measure_distance", side_effect=[30.0, 100.0, 100.0]):
             assert sensor._confirmed_near() is False
 
     def test_is_someone_near_delegates_to_confirmed_near(self) -> None:
@@ -480,10 +475,12 @@ class TestHCSR04:
         """wait_for_person() must loop until _confirmed_near() returns True."""
         with patch("time.sleep"):
             sensor = HcSr04(trigger_pin=31, echo_pin=15)
-        with patch.object(sensor, "_confirmed_near", side_effect=[False, False, True]):
-            with patch("time.sleep") as mock_sleep:
+            with (
+                patch.object(sensor, "_confirmed_near", side_effect=[False, False, True]),
+                patch("time.sleep") as mock_sleep,
+            ):
                 sensor.wait_for_person()
-        assert mock_sleep.call_count == 2
+                assert mock_sleep.call_count == 2
         mock_sleep.assert_called_with(POLL_INTERVAL_S)
 
     def test_custom_threshold_passed_into_instance(self) -> None:

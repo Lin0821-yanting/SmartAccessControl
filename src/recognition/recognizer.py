@@ -26,7 +26,7 @@ class FaceRecognizer:
         self,
         onnx_path: str = "models/weights/MobileFaceNet.onnx",
         db_path: str = "data/face_db.npy",
-        threshold: float = 0.9,
+        threshold: float = 0.85,
     ):
         self.threshold = threshold
         self.sess = ort.InferenceSession(
@@ -59,19 +59,15 @@ class FaceRecognizer:
         idx = int(np.argmax(sims))
         sim = float(sims[idx])
         if sim >= self.threshold:
-            return RecognitionResult(
-                name=self.names[idx], similarity=sim, authorized=True
-            )
+            return RecognitionResult(name=self.names[idx], similarity=sim, authorized=True)
         return RecognitionResult(name="unknown", similarity=sim, authorized=False)
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     import sys
 
     img_path = sys.argv[1] if len(sys.argv) > 1 else "data/enrollment/henry/0000.jpg"
     r = FaceRecognizer()
     img = cv2.imread(img_path)
     res = r.match(img)
-    print(
-        f"辨識：{res.name}  similarity={res.similarity:.4f}  authorized={res.authorized}"
-    )
+    print(f"辨識：{res.name}  similarity={res.similarity:.4f}  authorized={res.authorized}")

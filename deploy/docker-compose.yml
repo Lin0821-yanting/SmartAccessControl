@@ -1,0 +1,72 @@
+# Copyright (c) 2026 Yanting Lin, henrytsai
+# Tatung University — I4210 AI實務專題
+# deploy/docker-compose.yml — Smart Access Control runtime stack
+#
+# Services:
+#   mosquitto      : MQTT broker (inter-service only, no host port exposed)
+#   access-control : full pipeline (orchestrator + AI + GPIO + MQTT publish)
+#
+# Usage:
+#   cd deploy/
+#   IMAGE_TAG=latest docker compose up -d        # start
+#   docker compose logs -f access-control        # follow logs
+#   docker compose down                          # stop
+#
+# The IMAGE_TAG env var is set by deploy.sh to the exact SHA or semver tag.
+# The :latest default lets you run the stack manually without deploy.sh.
+
+services:
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-W", "3"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  access-control:
+    image: ghcr.io/lin0821-yanting/smartaccesscontrol:${IMAGE_TAG:-latest}
+    runtime: nvidia
+    privileged: true
+    # Direction C: 容器內無法直接開 CSI（Argus EGLDisplay 初始化失敗），改由
+    # host 的 start_camera_bridge.sh 經 POSIX 共享記憶體餵影格。
+    # ipc: host → 容器與 host 共用 /dev/shm，shmsrc 才看得到 shmsink 的物件。
+    ipc: host
+    command: ["python3", "src/pipeline/main.py", "--no-display", "--source", "shm"]
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    environment:
+      - MQTT_BROKER=mosquitto
+      - MQTT_PORT=1883
+      - JETSON_TESTING_MODEL_NAME=JETSON_ORIN_NANO
+      - CAMERA_SOURCE=shm
+      - CAMERA_SHM_SOCKET=/tmp/camshm/cam
+      - CAMERA_SHM_WIDTH=1280
+      - CAMERA_SHM_HEIGHT=720
+      - CAMERA_SHM_FPS=30
+    group_add:
+      - video
+    volumes:
+      - engine-cache:/app/models/engines
+      - /home/jetson/SmartAccessControl/data:/app/data
+      - /home/jetson/SmartAccessControl/models/weights:/app/models/weights:ro
+      - /home/jetson/.local/lib/python3.10/site-packages/onnxruntime:/usr/local/lib/python3.10/dist-packages/onnxruntime:ro
+      - /home/jetson/SmartAccessControl/.venv/lib/python3.10/site-packages/gpiod.cpython-310-aarch64-linux-gnu.so:/usr/local/lib/python3.10/dist-packages/gpiod.cpython-310-aarch64-linux-gnu.so:ro
+      - /usr/lib/aarch64-linux-gnu/libgpiod.so.2:/usr/lib/aarch64-linux-gnu/libgpiod.so.2:ro
+      # Direction C 相機橋接：host shmsink socket 目錄（須與 bridge 腳本一致）
+      - /tmp/camshm:/tmp/camshm
+    devices:
+      - /dev/gpiochip0:/dev/gpiochip0
+      - /dev/gpiochip1:/dev/gpiochip1
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  engine-cache:

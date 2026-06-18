@@ -61,9 +61,7 @@ def collect_faces(name: str, count: int, output_dir: Path) -> None:
 
     cap = cv2.VideoCapture(gstreamer_pipeline(), cv2.CAP_GSTREAMER)
     if not cap.isOpened():
-        raise RuntimeError(
-            "無法開啟 CSI 相機，請確認 IMX219 連接正常且 nvarguscamerasrc 可用。"
-        )
+        raise RuntimeError("無法開啟 CSI 相機，請確認 IMX219 連接正常且 nvarguscamerasrc 可用。")
 
     saved = 0
     auto_mode = False

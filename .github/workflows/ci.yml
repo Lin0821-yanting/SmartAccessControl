@@ -71,7 +71,6 @@ jobs:
             "opencv-python==4.10.0.84" \
             "paho-mqtt==2.1.0" \
             gpiod \
-            onnxruntime \
             pyyaml
 
       - name: Run pytest with coverage gate
@@ -128,6 +127,10 @@ jobs:
     name: Build & push ARM64 image → GHCR
     runs-on: ubuntu-latest
     needs: [test, security-scan]
+    # Only build/push on push events. On pull_request the GITHUB_TOKEN is
+    # read-only for packages, so `docker push` to GHCR is denied; the push-event
+    # run for the same commit already builds and pushes the image.
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v5
 
@@ -215,7 +218,6 @@ jobs:
             "opencv-python==4.10.0.84" \
             "paho-mqtt==2.1.0" \
             gpiod \
-            onnxruntime \
             pyyaml \
             --break-system-packages \
             --quiet

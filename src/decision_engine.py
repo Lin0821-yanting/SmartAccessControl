@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 <Your Name>, <Partner's Name>
+# Copyright (c) 2026 <Yanting Lin>
 # Tatung University — I4210 AI實務專題
 """src/decision_engine.py — access-control decision state machine.
 
@@ -33,13 +33,19 @@ from enum import Enum, auto
 # directly and callers can override via DecisionEngine.__init__ kwargs.
 # ---------------------------------------------------------------------------
 
-SIMILARITY_THRESHOLD: float = 0.85
-"""Minimum cosine-similarity score to consider an identity match."""
+SIMILARITY_THRESHOLD: float = 0.5
+"""Minimum cosine-similarity score to consider an identity match.
 
-REQUIRED_CONSECUTIVE_FRAMES: int = 3
-"""Number of consecutive matching frames required before GRANT is issued."""
+Matches ``recognition.similarity_threshold`` in configs/config.yaml. See the
+capstone parameter rationale in README.md (活體偵測與蜂鳴器設計決策)."""
 
-LIVENESS_THRESHOLD: float = 0.70
+REQUIRED_CONSECUTIVE_FRAMES: int = 4
+"""Number of consecutive matching frames required before GRANT is issued.
+
+Raised to 4 so the per-frame real-vs-photo gap is amplified across frames
+(see README.md). Matches ``recognition.confirm_frames`` in config.yaml."""
+
+LIVENESS_THRESHOLD: float = 0.3
 """Minimum MiniFASNet liveness score to pass the anti-spoof gate.
 
 The AI pipeline converts this to a bool (``anti_spoof_pass``) before
@@ -76,11 +82,11 @@ class DecisionEngine:
     ----------
     similarity_threshold:
         Cosine-similarity cutoff for an identity match.
-        Defaults to :data:`SIMILARITY_THRESHOLD` (0.85).
+        Defaults to :data:`SIMILARITY_THRESHOLD` (0.5).
     required_frames:
         Number of consecutive qualifying frames before issuing
         :attr:`Decision.GRANT`.
-        Defaults to :data:`REQUIRED_CONSECUTIVE_FRAMES` (3).
+        Defaults to :data:`REQUIRED_CONSECUTIVE_FRAMES` (4).
 
     Examples
     --------

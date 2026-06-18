@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 Yanting Lin, henrytsai
+# Copyright (c) 2026 Yanting Lin
 # Tatung University — I4210 AI實務專題
 """src/orchestrator.py — top-level integration loop.
 
@@ -14,8 +14,9 @@ Threading model
 ---------------
 - Main thread   : camera read → AI pipeline → decide → act → display
 - Heartbeat     : daemon thread publishing system metrics at 1 Hz
-- ActuatorController internally spawns a servo thread on GRANT so the
-  main pipeline loop is not blocked for the 3-second unlock period.
+- ActuatorController spawns a non-daemon servo thread on GRANT so the
+  main pipeline loop is not blocked for the unlock period.  All actuator
+  threads are daemon=False so GPIO pins are driven LOW before process exit.
 
 Typical entry point::
 
@@ -27,6 +28,7 @@ Typical entry point::
 from __future__ import annotations
 
 import logging
+import struct
 import threading
 import time
 from pathlib import Path
@@ -57,6 +59,7 @@ def _gstreamer_pipeline(  # pragma: no cover
     fps: int = 20,
     flip_method: int = 0,
 ) -> str:
+    """Build a GStreamer pipeline string for the CSI camera."""
     return (
         f"nvarguscamerasrc sensor-id={sensor_id} ! "
         f"video/x-raw(memory:NVMM), width={width}, height={height}, "
@@ -67,6 +70,31 @@ def _gstreamer_pipeline(  # pragma: no cover
     )
 
 
+def _read_shm_frame(  # pragma: no cover
+    shm_path: str = "/dev/shm/camera_frame",
+) -> np.ndarray | None:
+    """Read a camera frame from shared memory written by camera_server.py.
+
+    Returns the BGR frame as a numpy array, or None if unavailable.
+    The shared memory file format is:
+        - 12-byte header: width (uint32), height (uint32), data_size (uint32)
+        - raw BGR bytes
+    """
+    header_bytes = 12  # 3 × uint32: width, height, data_size
+    try:
+        with open(shm_path, "rb") as f:
+            header = f.read(header_bytes)
+            if len(header) < header_bytes:
+                return None
+            w, h, size = struct.unpack("III", header)
+            data = f.read(size)
+            if len(data) < size:
+                return None
+            return np.frombuffer(data, dtype=np.uint8).reshape(h, w, 3).copy()
+    except (OSError, ValueError, struct.error):
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Pipeline stage labels (used in heartbeat)
 # ---------------------------------------------------------------------------
@@ -75,11 +103,17 @@ _STAGE_DETECTING = "DETECTING"
 _STAGE_MATCHING = "MATCHING"
 _STAGE_DECIDED = "DECIDED"
 
-# HC-SR04 gate distance (cm) — persons closer than this trigger AI pipeline
-_GATE_DISTANCE_CM: float = 60.0
+# Shared memory path for camera frames from host camera_server.py
+_SHM_CAMERA_PATH = "/dev/shm/camera_frame"
 
-# After GRANT, suppress further triggers for this many seconds
-_GRANT_COOLDOWN_S: float = 4.0
+# HC-SR04 gate distance (cm) — persons closer than this trigger AI pipeline.
+# Widened 60 → 100 so the user stands back, the face is smaller and the
+# background enters frame, aligning the live input with the enrolment
+# distribution (see README.md capstone parameter rationale).
+_GATE_DISTANCE_CM: float = 100.0
+
+# After GRANT, suppress further triggers for this many seconds.
+_GRANT_COOLDOWN_S: float = 4.5
 
 
 class Orchestrator:
@@ -195,6 +229,8 @@ class Orchestrator:
               broker_host: localhost
               broker_port: 1883
         """
+        import os
+
         with open(config_path) as f:
             cfg = yaml.safe_load(f)
 
@@ -221,8 +257,8 @@ class Orchestrator:
         )
         actuator = ActuatorController()
         publisher = MqttPublisher(
-            broker_host=q.get("broker_host", "localhost"),
-            broker_port=q.get("broker_port", 1883),
+            broker_host=os.environ.get("MQTT_BROKER", q.get("broker_host", "localhost")),
+            broker_port=int(os.environ.get("MQTT_PORT", q.get("broker_port", 1883))),
         )
         sensor = HCSR04()
 
@@ -244,36 +280,68 @@ class Orchestrator:
     def run(self) -> None:  # pragma: no cover
         """Open camera, connect MQTT, and start the main pipeline loop.
 
-        Press Q or Ctrl-C to exit cleanly.
+        Camera priority:
+          1. GStreamer nvarguscamerasrc (CSI, native Docker if EGL available)
+          2. Shared memory /dev/shm/camera_frame (written by camera_server.py
+             running on the host — works when EGL is unavailable in container)
+          3. Sensor-only mode (HC-SR04 + heartbeat only, no AI pipeline)
         """
         self._publisher.connect()
-
-        # Publish initial door state
         self._publisher.publish_status(
             door_state=self._door_state,
             last_person=self._last_person,
         )
 
-        # Start 1-Hz heartbeat daemon
         hb_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
         hb_thread.start()
 
+        # ── Camera source selection ──────────────────────────────────────
         cap = cv2.VideoCapture(_gstreamer_pipeline(), cv2.CAP_GSTREAMER)
-        if not cap.isOpened():
-            raise RuntimeError("Cannot open CSI camera — check GStreamer pipeline")
+        use_gstreamer = cap.isOpened()
 
-        logger.info("Orchestrator: pipeline started")
+        use_shm = False
+        if not use_gstreamer:
+            cap = None
+            # Check shared memory camera (camera_server.py on host)
+            if _read_shm_frame(_SHM_CAMERA_PATH) is not None:
+                use_shm = True
+                logger.info("Camera source: shared memory (%s)", _SHM_CAMERA_PATH)
+            else:
+                logger.warning(
+                    "No camera available — sensor-only mode. "
+                    "To enable camera, run scripts/camera_server.py on the host."
+                )
+        else:
+            logger.info("Camera source: GStreamer CSI")
+
+        use_sensor_only = not use_gstreamer and not use_shm
+
         print("\n[Orchestrator] Running. Press Q or Ctrl-C to stop.\n")
 
         try:
             while True:
-                ret, frame = cap.read()
-                if not ret:
+                # ── Sensor-only mode: no camera, no AI pipeline ──────────
+                if use_sensor_only:
+                    self._distance_cm = self._sensor._measure_distance()
+                    self._update_fps()
+                    time.sleep(0.05)
                     continue
+
+                # ── Read frame ───────────────────────────────────────────
+                if use_gstreamer:
+                    ret, frame = cap.read()
+                    if not ret:
+                        continue
+                else:
+                    # Shared memory: read frame written by camera_server.py
+                    frame = _read_shm_frame(_SHM_CAMERA_PATH)
+                    if frame is None:
+                        time.sleep(0.01)
+                        continue
 
                 self._tick(frame)
 
-                if self._display:
+                if self._display and use_gstreamer:
                     cv2.imshow("Smart Access Control", frame)
                     if cv2.waitKey(1) & 0xFF in (ord("q"), 27):
                         break
@@ -281,7 +349,8 @@ class Orchestrator:
         except KeyboardInterrupt:
             print("\n[Orchestrator] Interrupted.")
         finally:
-            cap.release()
+            if cap is not None:
+                cap.release()
             if self._display:
                 cv2.destroyAllWindows()
             self._actuator.cleanup()
@@ -296,9 +365,7 @@ class Orchestrator:
         """Process a single camera frame end-to-end."""
         # ── Sense: HC-SR04 gate ──────────────────────────────────────────
         self._distance_cm = self._sensor._measure_distance()
-        gate_open = (
-            self._distance_cm != float("inf") and self._distance_cm < _GATE_DISTANCE_CM
-        )
+        gate_open = self._distance_cm != float("inf") and self._distance_cm < _GATE_DISTANCE_CM
 
         # Skip AI pipeline if gate closed or still in cooldown
         if not gate_open or time.monotonic() < self._grant_until:
@@ -312,7 +379,6 @@ class Orchestrator:
         faces: list[FaceDetection] = self._detector.detect(frame)
 
         if not faces:
-            # Gate fired but no face — HC-SR04 1-second window expired
             decision = self._engine.ignore()
             self._publish_event_from(
                 decision=decision,
@@ -326,9 +392,8 @@ class Orchestrator:
             self._update_fps()
             return
 
-        # Process the highest-confidence face only
         face = faces[0]
-        bbox = face.bbox.astype(int).tolist()  # [x1, y1, x2, y2]
+        bbox = face.bbox.astype(int).tolist()
 
         # ── Process: Stage 2 & 3 — recognition + anti-spoof ─────────────
         self._set_stage(_STAGE_MATCHING)
@@ -336,7 +401,7 @@ class Orchestrator:
         liveness: LivenessResult = self._antispoof.predict(face.crop)
 
         anti_spoof_pass = liveness.is_live
-        face_in_db = recog.authorized  # True when sim >= threshold
+        face_in_db = recog.authorized
 
         # ── Decide: DecisionEngine ───────────────────────────────────────
         self._set_stage(_STAGE_DECIDED)
@@ -346,7 +411,6 @@ class Orchestrator:
             face_in_db=face_in_db,
         )
 
-        # ── Log ──────────────────────────────────────────────────────────
         logger.info(
             "DECISION=%s  identity=%s  sim=%.3f  live=%.3f  frames=%d",
             decision.name,
@@ -356,7 +420,6 @@ class Orchestrator:
             self._engine.consecutive_frames,
         )
 
-        # ── Publish: lab/access/events ───────────────────────────────────
         self._publish_event_from(
             decision=decision,
             identity=recog.name,
@@ -367,7 +430,6 @@ class Orchestrator:
             bbox=bbox,
         )
 
-        # ── Act: actuator + door-state publish ───────────────────────────
         self._act(decision, identity=recog.name)
         self._update_fps()
 
@@ -376,14 +438,16 @@ class Orchestrator:
     # ------------------------------------------------------------------
 
     def _act(self, decision: Decision, identity: str) -> None:
-        """Drive actuators and publish status when door state changes."""
+        """Drive actuators and publish status when door state changes.
+
+        All actuator threads use ``daemon=False`` so that a Ctrl-C or
+        normal exit waits for the current GPIO sequence to finish before
+        ``ActuatorController.cleanup()`` is called.
+        """
         if decision == Decision.GRANT:
             self._grant_until = time.monotonic() + _GRANT_COOLDOWN_S
-            # Actuator: servo unlock + green LED (non-blocking internally)
-            threading.Thread(target=self._actuator.grant_access, daemon=True).start()
-            # Status: unlocked
+            threading.Thread(target=self._actuator.grant_access, daemon=False).start()
             self._set_door_state("unlocked", identity)
-            # Schedule auto-relock status publish after servo returns
             threading.Timer(
                 _GRANT_COOLDOWN_S,
                 self._set_door_state,
@@ -391,15 +455,13 @@ class Orchestrator:
             ).start()
 
         elif decision == Decision.DENY:
-            threading.Thread(target=self._actuator.deny_access, daemon=True).start()
+            threading.Thread(target=self._actuator.deny_access, daemon=False).start()
 
         elif decision == Decision.UNKNOWN:
-            threading.Thread(target=self._actuator.alert_unknown, daemon=True).start()
+            threading.Thread(target=self._actuator.alert_unknown, daemon=False).start()
 
         elif decision == Decision.SPOOF:
-            threading.Thread(target=self._actuator.alert_spoof, daemon=True).start()
-
-        # IGNORE → no actuator action
+            threading.Thread(target=self._actuator.alert_spoof, daemon=False).start()
 
     def _set_door_state(self, state: str, person: str) -> None:
         """Update tracked door state and publish only if it changed."""
@@ -456,6 +518,7 @@ class Orchestrator:
                     pipeline_stage=self._get_stage(),
                     container_uptime_s=int(time.monotonic() - self._start_time),
                 )
+                Path("/tmp/healthz").write_text(str(time.time()))
             except Exception:
                 logger.exception("Heartbeat publish failed")
 
@@ -464,6 +527,7 @@ class Orchestrator:
     # ------------------------------------------------------------------
 
     def _update_fps(self) -> None:
+        """Update FPS counter using a 1-second sliding window."""
         self._frame_count += 1
         now = time.monotonic()
         elapsed = now - self._fps_window_start

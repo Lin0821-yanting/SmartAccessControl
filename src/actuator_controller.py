@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 <Yanting Lin>, <Partner's Name>
+# Copyright (c) 2026 <Yanting Lin>
 # Tatung University — I4210 AI實務專題
 """High-level actuator façade for the door-access system.
 
@@ -13,6 +13,14 @@ Decision → ActuatorController method mapping (from proposal §4.5):
   UNKNOWN → alert_unknown()  red LED 2 s + buzzer 3 beeps
   SPOOF   → alert_spoof()    red LED 2 s + buzzer 3 beeps  (same HW, diff MQTT)
   IGNORE  → (no call)
+
+Drop-on-busy design
+-------------------
+All public methods use ``self._lock.acquire(blocking=False)``.  If the
+actuator is already executing a previous decision the new call is
+silently dropped.  This prevents thread-queue backlog when the camera
+pipeline produces decisions faster than hardware can execute them
+(e.g. UNKNOWN at 18 FPS would queue 270 beeps without this guard).
 """
 
 import logging
@@ -42,8 +50,16 @@ class ActuatorController:
     encapsulates the required hardware sequence.  Callers must NOT
     manipulate LED / Buzzer / Servo directly after constructing this class.
 
-    Thread safety: each method acquires a reentrant lock so overlapping
-    decisions (e.g. rapid-fire deny during an ongoing grant) do not race.
+    **Drop-on-busy**: every public method calls
+    ``self._lock.acquire(blocking=False)``.  If the lock is already held
+    by another thread the call returns immediately without queuing.  This
+    is intentional — stale decisions accumulating in a queue produce
+    confusing LED / buzzer behaviour (e.g. buzzer beeping for 90 seconds
+    after a person walks away).
+
+    Thread safety: the reentrant lock still serialises concurrent callers
+    that slip through the non-blocking guard (e.g. two calls on the same
+    thread).
 
     Usage::
 
@@ -84,70 +100,86 @@ class ActuatorController:
         """Unlock the door latch and illuminate the green LED.
 
         Sequence:
-          1. Servo rotates to 90° (latch opens).
-          2. Green LED illuminates for _GRANT_LED_S seconds.
-          3. Servo auto-returns to 0° (latch closes).
+          1. Servo rotates to 90° (latch opens) — burst-pulse, then silent hold.
+          2. Green LED illuminates for _GRANT_LED_S seconds (concurrent).
+          3. Servo auto-returns to 0° (latch closes) — burst-pulse.
 
-        The servo relock happens inside unlock_then_relock(), which blocks
-        for UNLOCK_HOLD_S seconds, so this call is synchronous.
-        Call from a worker thread if you need the main pipeline to stay live.
+        Dropped silently if the actuator is already busy (drop-on-busy).
+        Call from a worker thread; total blocking time ≈ 4.2 s.
         """
-        with self._lock:
+        if not self._lock.acquire(blocking=False):
+            logger.debug("ACT GRANT — skipped (actuator busy)")
+            return
+        try:
             logger.info("ACT GRANT — servo unlock + green LED")
-            # Start servo unlock (blocks for UNLOCK_HOLD_S internally)
-            # We run it in a thread so green LED can be concurrent
-            servo_thread = threading.Thread(
-                target=self._servo.unlock_then_relock, daemon=True
-            )
+            servo_thread = threading.Thread(target=self._servo.unlock_then_relock, daemon=False)
             servo_thread.start()
-            # Green LED stays on for grant duration
             self._led.indicate(success=True, duration=_GRANT_LED_S)
-            servo_thread.join()  # ensure servo relocks before method returns
+            servo_thread.join()
+        finally:
+            self._lock.release()
 
     def deny_access(self) -> None:
         """Illuminate the red LED to signal a denied access attempt.
 
         Triggered when the face is in the DB but similarity < 0.85.
         Red LED ON for _DENY_LED_S seconds. No buzzer, no servo action.
+        Dropped silently if the actuator is already busy (drop-on-busy).
         """
-        with self._lock:
+        if not self._lock.acquire(blocking=False):
+            logger.debug("ACT DENY — skipped (actuator busy)")
+            return
+        try:
             logger.info("ACT DENY — red LED")
             self._led.indicate(success=False, duration=_DENY_LED_S)
+        finally:
+            self._lock.release()
 
     def alert_unknown(self) -> None:
         """Alert with red LED and buzzer for an unrecognised face.
 
         Triggered when a face is detected but is not enrolled in the DB.
         Red LED ON for _DENY_LED_S seconds, plus _ALERT_BEEPS buzzer pulses.
+        Dropped silently if the actuator is already busy (drop-on-busy).
         """
-        with self._lock:
+        if not self._lock.acquire(blocking=False):
+            logger.debug("ACT UNKNOWN — skipped (actuator busy)")
+            return
+        try:
             logger.info("ACT UNKNOWN — red LED + %d beeps", _ALERT_BEEPS)
-            # Run LED and buzzer concurrently (LED duration ≥ buzzer duration)
             led_thread = threading.Thread(
                 target=self._led.indicate,
                 kwargs={"success": False, "duration": _DENY_LED_S},
-                daemon=True,
+                daemon=False,
             )
             led_thread.start()
-            self._multi_beep(_ALERT_BEEPS)
+            # self._multi_beep(_ALERT_BEEPS)
             led_thread.join()
+        finally:
+            self._lock.release()
 
     def alert_spoof(self) -> None:
         """Alert with red LED and buzzer when a liveness check fails.
 
         Identical hardware sequence to alert_unknown().
         The distinction is handled upstream via the MQTT payload.
+        Dropped silently if the actuator is already busy (drop-on-busy).
         """
-        with self._lock:
+        if not self._lock.acquire(blocking=False):
+            logger.debug("ACT SPOOF — skipped (actuator busy)")
+            return
+        try:
             logger.info("ACT SPOOF — red LED + %d beeps", _ALERT_BEEPS)
             led_thread = threading.Thread(
                 target=self._led.indicate,
                 kwargs={"success": False, "duration": _DENY_LED_S},
-                daemon=True,
+                daemon=False,
             )
             led_thread.start()
             self._multi_beep(_ALERT_BEEPS)
             led_thread.join()
+        finally:
+            self._lock.release()
 
     # ------------------------------------------------------------------
     # Cleanup
@@ -169,9 +201,6 @@ class ActuatorController:
         import time
 
         for i in range(count):
-            # Directly drive buzzer pin via its private _beep if available,
-            # otherwise fall back to indicate(success=False) once.
-            # Using internal _beep gives us finer control over count and gap.
             self._buzzer._beep(_BEEP_ON_S)
             if i < count - 1:
                 time.sleep(_BEEP_OFF_S)

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 GI104 henrytsai
-# Tatung University 14210 AI實務專題
-"""
-main.py
--------
-智慧門禁系統主程式：整合 YOLOv8n-face + MobileFaceNet + MiniFASNet
+# Copyright (c) 2026 GI104 henrytsai, Yanting Lin
+# Tatung University I4210 AI實務專題
+"""src/pipeline/main.py — 智慧門禁系統主程式。
+
+整合 YOLOv8n-face + MobileFaceNet + MiniFASNet + HC-SR04 + ActuatorController
 透過 IMX219 CSI 相機進行即時人臉辨識與活體偵測。
 
 決策邏輯（三條件同時滿足才授權）：
@@ -12,12 +11,23 @@ main.py
   2. 連續 3 幀匹配同一人
   3. 活體偵測通過（is_live = True）
 
+MQTT 格式與 orchestrator.py 一致：
+  lab/access/events    — 每幀決策結果
+  lab/access/status    — 門鎖狀態變更
+  lab/access/heartbeat — 1 Hz 系統健康
+
 Usage:
     pdm run python src/pipeline/main.py
     pdm run python src/pipeline/main.py --no-display   # headless 模式
 """
 
+from __future__ import annotations
+
 import argparse
+import logging
+import os
+import sys
+import threading
 import time
 from collections import deque
 from pathlib import Path
@@ -25,25 +35,75 @@ from pathlib import Path
 import cv2
 import numpy as np
 import yaml
-import threading
-
-# 加入專案根目錄至 path
-import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src.detection.detector import FaceDetector
-from src.recognition.recognizer import FaceRecognizer
+logger = logging.getLogger(__name__)
+
+from src.actuator_controller import ActuatorController
 from src.antispoof.antispoof import AntiSpoof
+from src.detection.detector import FaceDetector
+from src.hc_sr04 import HcSr04
+from src.mqtt_publisher import MqttPublisher
+from src.recognition.recognizer import FaceRecognizer
+
+# ---------------------------------------------------------------------------
+# Pipeline stage labels (matches orchestrator.py)
+# ---------------------------------------------------------------------------
+_STAGE_IDLE = "IDLE"
+_STAGE_DETECTING = "DETECTING"
+_STAGE_MATCHING = "MATCHING"
+_STAGE_DECIDED = "DECIDED"
+
+# HC-SR04 gate distance (cm). Wider gate lets the user stand further back so
+# the face occupies less of the frame (more background context) — which the
+# anti-spoof model scores far more reliably than a close-up, face-filling frame.
+_GATE_DISTANCE_CM: float = 100.0
+
+# After GRANT, suppress further triggers for this many seconds
+_GRANT_COOLDOWN_S: float = 4.5
+
+# After a DENY/UNKNOWN/SPOOF alert, suppress further alert actuator triggers
+# for this many seconds. Prevents the buzzer/LED from firing on every frame
+# while the model keeps emitting UNKNOWN for the same person in front of the
+# camera (otherwise it re-triggers ~every 2 s and sounds non-stop).
+_ALERT_COOLDOWN_S: float = 5.0
+
+# ── Liveness (anti-spoof) live-crop tuning ───────────────────────────────
+# MiniFASNet relies on the background/context around the face to judge
+# liveness. The detector's tight 20% crop starves it of context, so the
+# real person flickers as SPOOF. Expand the bbox by this scale (≈2.7×) and
+# feed THAT to the anti-spoof model only (recognition keeps the tight crop).
+# Tune live with: LIVENESS_SCALE=3.2 pdm run python src/pipeline/main.py ...
+_LIVENESS_CROP_SCALE: float = float(os.environ.get("LIVENESS_SCALE", "2.7"))
+# Which framing to feed the anti-spoof model. "full" = the whole camera frame
+# (matches how the enrollment images were captured → most stable real scores,
+# median ~0.76 vs ~0.19 for a tight crop); "crop" = enlarged face crop.
+_LIVENESS_FRAME: str = os.environ.get("LIVENESS_FRAME", "full")
+# Liveness pass threshold applied to the model's real-face probability.
+# The model's built-in 0.6 is too strict for our camera/distance; the real
+# person sits ~0.25–0.5 while a photo sits lower, so the separating threshold
+# lives in that gap. Tune live with LIVENESS_THRESHOLD=0.3.
+_LIVENESS_THRESHOLD: float = float(os.environ.get("LIVENESS_THRESHOLD", "0.3"))
+# Require this many CONSECUTIVE liveness-fail frames before declaring SPOOF.
+# A real face dips below threshold only sporadically; a real photo/screen fails
+# persistently. This absorbs the flicker so the buzzer fires only on a genuine,
+# sustained spoof — while keeping spoof rejection. Tune live with SPOOF_FRAMES=4.
+_SPOOF_CONFIRM_FRAMES: int = int(os.environ.get("SPOOF_FRAMES", "5"))
 
 
-# ── Config ───────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Config loader
+# ---------------------------------------------------------------------------
 def load_config(config_path: str = "configs/config.yaml") -> dict:
+    """Load YAML config file."""
     with open(config_path) as f:
         return yaml.safe_load(f)
 
 
-# ── GStreamer pipeline ────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# GStreamer pipeline
+# ---------------------------------------------------------------------------
 def gstreamer_pipeline(
     sensor_id: int = 0,
     width: int = 1920,
@@ -51,6 +111,7 @@ def gstreamer_pipeline(
     fps: int = 20,
     flip_method: int = 0,
 ) -> str:
+    """Build GStreamer pipeline string for CSI camera."""
     return (
         f"nvarguscamerasrc sensor-id={sensor_id} ! "
         f"video/x-raw(memory:NVMM), width={width}, height={height}, "
@@ -61,24 +122,153 @@ def gstreamer_pipeline(
     )
 
 
-# ── Decision buffer ───────────────────────────────────────────────────────────
-class TemporalVoter:
-    """
-    時間一致性投票器：連續 N 幀匹配同一人才授權。
-    防止單幀照片攻擊。
+# ---------------------------------------------------------------------------
+# Shared-memory camera source (Direction C: host shmsink → container shmsrc)
+#
+# Why this exists: inside the container the CSI camera (nvarguscamerasrc /
+# Argus) cannot initialise an EGLDisplay, so the container cannot open the CSI
+# camera directly. Instead the host runs a tiny capture pipeline that pushes
+# decoded BGR frames into POSIX shared memory via `shmsink`; the container
+# reads them back via `shmsrc`. The container's cv2 is built WITHOUT GStreamer,
+# so we pull frames through PyGObject (Gst appsink) and expose a cv2-compatible
+# read()/isOpened()/release() interface — the main loop stays unchanged.
+#
+# Requires the container to run with `--ipc=host` (POSIX shm lives in /dev/shm)
+# and the shmsink socket directory mounted (see deploy/docker-compose.yml).
+# Host side is started by deploy/start_camera_bridge.sh.
+# ---------------------------------------------------------------------------
+_SHM_SOCKET: str = os.environ.get("CAMERA_SHM_SOCKET", "/tmp/camshm/cam")
+_SHM_WIDTH: int = int(os.environ.get("CAMERA_SHM_WIDTH", "1280"))
+_SHM_HEIGHT: int = int(os.environ.get("CAMERA_SHM_HEIGHT", "720"))
+_SHM_FPS: int = int(os.environ.get("CAMERA_SHM_FPS", "30"))
+
+
+class GstShmCapture:
+    """Read BGR frames from a host `shmsink` via PyGObject Gst appsink.
+
+    Drop-in replacement for ``cv2.VideoCapture`` (exposes ``isOpened()``,
+    ``read()``, ``release()``) so :func:`run_pipeline` works unchanged whether
+    the source is the CSI camera (cv2) or the shared-memory bridge (this class).
     """
 
-    def __init__(self, required_frames: int = 3):
+    def __init__(
+        self,
+        socket_path: str = _SHM_SOCKET,
+        width: int = _SHM_WIDTH,
+        height: int = _SHM_HEIGHT,
+        framerate: int = _SHM_FPS,
+        read_timeout_s: float = 2.0,
+    ) -> None:
+        import gi  # lazy import: only the container/shm path needs PyGObject
+
+        gi.require_version("Gst", "1.0")
+        from gi.repository import Gst
+
+        self._Gst = Gst
+        if not Gst.is_initialized():
+            Gst.init(None)
+
+        self._width = width
+        self._height = height
+        self._timeout_ns = int(read_timeout_s * Gst.SECOND)
+
+        pipe = (
+            f"shmsrc socket-path={socket_path} ! "
+            f"video/x-raw,format=BGR,width={width},height={height},"
+            f"framerate={framerate}/1 ! videoconvert ! "
+            "appsink name=sink emit-signals=false sync=false "
+            "max-buffers=2 drop=true"
+        )
+        self._pipeline = Gst.parse_launch(pipe)
+        self._sink = self._pipeline.get_by_name("sink")
+        ret = self._pipeline.set_state(Gst.State.PLAYING)
+        self._opened = ret != Gst.StateChangeReturn.FAILURE
+
+    def isOpened(self) -> bool:  # noqa: N802 (cv2-compatible name)
+        return self._opened
+
+    def read(self) -> tuple[bool, np.ndarray | None]:
+        """Pull one frame. Returns (True, BGR ndarray) or (False, None)."""
+        Gst = self._Gst
+        sample = self._sink.emit("try-pull-sample", self._timeout_ns)
+        if sample is None:
+            return False, None
+        buf = sample.get_buffer()
+        success, mapinfo = buf.map(Gst.MapFlags.READ)
+        if not success:
+            return False, None
+        try:
+            frame = np.frombuffer(mapinfo.data, dtype=np.uint8).reshape(
+                (self._height, self._width, 3)
+            ).copy()  # copy: buffer is unmapped right after
+        finally:
+            buf.unmap(mapinfo)
+        return True, frame
+
+    def release(self) -> None:
+        self._pipeline.set_state(self._Gst.State.NULL)
+        self._opened = False
+
+
+# ---------------------------------------------------------------------------
+# System metric helpers (same as orchestrator.py)
+# ---------------------------------------------------------------------------
+def _read_cpu_temp() -> float:
+    """Read CPU temperature from sysfs (°C). Returns -1 on failure."""
+    path = "/sys/class/thermal/thermal_zone0/temp"
+    try:
+        return int(Path(path).read_text().strip()) / 1000.0
+    except OSError:
+        return -1.0
+
+
+def _expand_crop(
+    frame: np.ndarray, bbox: np.ndarray, scale: float
+) -> np.ndarray:
+    """Return a square crop centred on *bbox*, enlarged by *scale*.
+
+    The anti-spoof model needs context around the face; the detector's tight
+    crop is too small. Expanding to ~2.7× the face box and clamping to the
+    frame restores the background cues MiniFASNet was trained on.
+    """
+    h, w = frame.shape[:2]
+    x1, y1, x2, y2 = bbox
+    cx = (x1 + x2) / 2.0
+    cy = (y1 + y2) / 2.0
+    side = max(x2 - x1, y2 - y1) * scale
+    nx1 = max(0, int(cx - side / 2))
+    ny1 = max(0, int(cy - side / 2))
+    nx2 = min(w, int(cx + side / 2))
+    ny2 = min(h, int(cy + side / 2))
+    return frame[ny1:ny2, nx1:nx2].copy()
+
+
+def _read_ram_gb() -> float:
+    """Read used RAM in GB from /proc/meminfo. Returns -1 on failure."""
+    try:
+        meminfo: dict[str, int] = {}
+        for line in Path("/proc/meminfo").read_text().splitlines():
+            key, _, val = line.partition(":")
+            meminfo[key.strip()] = int(val.split()[0])
+        total = meminfo.get("MemTotal", 0)
+        avail = meminfo.get("MemAvailable", 0)
+        return round((total - avail) / (1024**2), 3)
+    except (OSError, ValueError, KeyError):
+        return -1.0
+
+
+# ---------------------------------------------------------------------------
+# Temporal voter (3-frame consistency check)
+# ---------------------------------------------------------------------------
+class TemporalVoter:
+    """連續 N 幀匹配同一人才授權，防止單幀照片攻擊。"""
+
+    def __init__(self, required_frames: int = 3) -> None:
         self.required = required_frames
         self.buffer: deque = deque(maxlen=required_frames)
 
     def vote(self, name: str) -> tuple[bool, str]:
-        """
-        加入一幀的辨識結果，回傳是否達成授權條件。
-
-        Returns:
-            (authorized, name) — authorized=True 表示連續 N 幀同一人
-        """
+        """加入一幀辨識結果，回傳是否達成授權條件。"""
         self.buffer.append(name)
         if len(self.buffer) == self.required:
             names = list(self.buffer)
@@ -87,120 +277,124 @@ class TemporalVoter:
         return False, "unknown"
 
     def reset(self) -> None:
+        """清空 buffer。"""
         self.buffer.clear()
 
+    @property
+    def consecutive_frames(self) -> int:
+        """目前 buffer 裡有幾幀。"""
+        return len(self.buffer)
 
-# ── Access decision ───────────────────────────────────────────────────────────
+
+# ---------------------------------------------------------------------------
+# Per-frame decision policy (pure logic — unit-testable, see tests/test_pipeline.py)
+# ---------------------------------------------------------------------------
 def make_decision(
-    recog_result,
-    liveness_result,
+    recog: object,
+    liveness: object,
     voter: TemporalVoter,
-) -> tuple[bool, str, str]:
+    spoof_streak: int,
+) -> tuple[str, int]:
+    """決定單幀結果，回傳 (decision, spoof_streak)。
+
+    與 run_pipeline 的 Stage 4 同一套政策，抽成純函式以便單元測試（無硬體）。
+    decision ∈ {GRANT, DENY, UNKNOWN, SPOOF, IGNORE}。優先序：
+
+      1. liveness.score < _LIVENESS_THRESHOLD → 累計連續活體失敗幀；連續達
+         _SPOOF_CONFIRM_FRAMES 幀才判 SPOOF，否則 IGNORE（避免真人偶爾掉分誤報）。
+         任何活體失敗都會 reset voter。
+      2. recog.authorized 為 False → UNKNOWN（reset voter）。
+      3. 活體通過且在 DB → 連續幀投票：同一人連續達標才 GRANT，否則 DENY。
     """
-    綜合辨識、活體、時間一致性，輸出最終決策。
-
-    Returns:
-        (granted, name, reason)
-    """
-    # 條件 1：活體偵測
-    if not liveness_result.is_live:
+    if liveness.score < _LIVENESS_THRESHOLD:
+        spoof_streak += 1
         voter.reset()
-        return False, "unknown", f"spoof detected (score={liveness_result.score:.2f})"
+        decision = "SPOOF" if spoof_streak >= _SPOOF_CONFIRM_FRAMES else "IGNORE"
+        return decision, spoof_streak
 
-    # 條件 2：相似度門檻
-    if not recog_result.authorized:
+    spoof_streak = 0
+    if not recog.authorized:
         voter.reset()
-        return False, "unknown", f"similarity too low ({recog_result.similarity:.3f})"
+        return "UNKNOWN", spoof_streak
 
-    # 條件 3：時間一致性（連續 3 幀）
-    authorized, name = voter.vote(recog_result.name)
-    if authorized:
-        return (
-            True,
-            name,
-            f"similarity={recog_result.similarity:.3f}, liveness={liveness_result.score:.3f}",
-        )
-
-    return (
-        False,
-        recog_result.name,
-        f"waiting frames ({len(voter.buffer)}/{voter.required})",
-    )
+    authorized, _matched = voter.vote(recog.name)
+    return ("GRANT" if authorized else "DENY"), spoof_streak
 
 
-# ── Draw overlay ──────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Draw overlay
+# ---------------------------------------------------------------------------
 def draw_overlay(
     frame: np.ndarray,
-    faces,
+    faces: list,
     decisions: list,
     fps: float,
+    distance_cm: float,
+    pipeline_stage: str,
 ) -> np.ndarray:
     """在影像上繪製偵測結果與系統狀態。"""
     vis = frame.copy()
-    h, w = vis.shape[:2]
 
-    for i, (face, (granted, name, reason)) in enumerate(zip(faces, decisions)):
+    for face, (decision, name, similarity, is_live) in zip(faces, decisions):
         x1, y1, x2, y2 = face.bbox.astype(int)
+        granted = decision == "GRANT"
         color = (0, 255, 0) if granted else (0, 0, 255)
 
-        # Bounding box
         cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
 
-        # 標籤
         label = f"{name} ({face.confidence:.2f})"
-        cv2.putText(vis, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+        cv2.putText(vis, label, (x1, y1 - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
 
-        # 5 keypoints
         for kp in face.keypoints:
-            kx, ky = int(kp[0]), int(kp[1])
-            cv2.circle(vis, (kx, ky), 3, (0, 255, 255), -1)
+            cv2.circle(vis, (int(kp[0]), int(kp[1])), 3, (0, 255, 255), -1)
 
-        # 狀態訊息
-        status = "ACCESS GRANTED" if granted else reason
-        cv2.putText(vis, status, (x1, y2 + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+        status = f"{decision} sim={similarity:.3f} live={is_live}"
+        cv2.putText(vis, status, (x1, y2 + 25),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
 
-    # FPS
-    cv2.putText(
-        vis,
-        f"FPS: {fps:.1f}",
-        (20, 40),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1.0,
-        (255, 255, 0),
-        2,
-    )
+    cv2.putText(vis, f"FPS: {fps:.1f}", (20, 40),
+                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 0), 2)
+    cv2.putText(vis, f"Dist: {distance_cm:.1f}cm", (20, 80),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 200, 0), 2)
+    cv2.putText(vis, f"Stage: {pipeline_stage}", (20, 115),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 255), 2)
 
     return vis
 
 
-# ── Main pipeline ─────────────────────────────────────────────────────────────
-def run_pipeline(config: dict, display: bool = True) -> None:
-    """
-    主要 pipeline 迴圈：Sense → Process → Decide → (Act)
+# ---------------------------------------------------------------------------
+# Main pipeline
+# ---------------------------------------------------------------------------
+def run_pipeline(config: dict, display: bool = True, source: str = "csi") -> None:
+    """主要 pipeline 迴圈：Sense → Process → Decide → Act → Publish。
 
-    Args:
-        config:  config.yaml 內容
-        display: 是否顯示即時畫面（headless 模式設為 False）
+    source:
+        "csi" — 直接開 CSI 相機（host 原生跑，預設）。
+        "shm" — 從 host shmsink 經共享記憶體讀影格（容器內 demo 用）。
     """
-    # mqtt
-    from src.mqtt.publisher import AccessPublisher
-
-    publisher = AccessPublisher(
-        broker=config["mqtt"]["broker"],
-        port=config["mqtt"]["port"],
-        topics=config["mqtt"]["topics"],
-    )
-    publisher.start_heartbeat(fps_getter=lambda: fps if "fps" in dir() else 0.0)
 
     cfg_models = config["models"]
     cfg_recog = config["recognition"]
+    cfg_mqtt = config.get("mqtt", {})
 
-    # blink
-    from src.antispoof.blink import BlinkDetector
+    # ── MQTT publisher (same interface as orchestrator.py) ────────────────
+    publisher = MqttPublisher(
+        broker_host=os.environ.get(
+            "MQTT_BROKER", cfg_mqtt.get("broker_host", "localhost")
+        ),
+        broker_port=int(os.environ.get(
+            "MQTT_PORT", cfg_mqtt.get("broker_port", 1883)
+        )),
+    )
+    publisher.connect()
+    publisher.publish_status(door_state="locked", last_person="unknown")
 
-    blink_detector = BlinkDetector(required_blinks=2, reset_timeout=10.0)
+    # ── Hardware ──────────────────────────────────────────────────────────
+    sensor = HcSr04()
+    actuator = ActuatorController()
 
-    # 載入三個模型
+    # ── AI models ─────────────────────────────────────────────────────────
     detector = FaceDetector(
         engine_path=cfg_models["yolo"]["engine"],
         conf_threshold=0.5,
@@ -217,16 +411,63 @@ def run_pipeline(config: dict, display: bool = True) -> None:
 
     voter = TemporalVoter(required_frames=cfg_recog["confirm_frames"])
 
-    # 開啟相機
-    cap = cv2.VideoCapture(gstreamer_pipeline(), cv2.CAP_GSTREAMER)
-    if not cap.isOpened():
-        raise RuntimeError("無法開啟 CSI 相機")
+    # ── State ─────────────────────────────────────────────────────────────
+    door_state = "locked"
+    last_person = "unknown"
+    grant_until = 0.0          # GRANT cooldown timestamp
+    alert_until = 0.0          # DENY/UNKNOWN/SPOOF alert cooldown timestamp
+    spoof_streak = 0           # consecutive liveness-fail frames
+    distance_cm = 999.0
+    pipeline_stage = _STAGE_IDLE
+    start_time = time.monotonic()
 
-    print("\n[Pipeline] 啟動！按 Q 或 Ctrl+C 結束。\n")
-
-    prev_time = time.time()
+    # FPS
     frame_count = 0
     fps = 0.0
+    fps_window_start = time.monotonic()
+
+    # ── Heartbeat daemon (1 Hz, same payload as orchestrator.py) ─────────
+    def heartbeat_loop() -> None:
+        while True:
+            time.sleep(1.0)
+            try:
+                publisher.publish_heartbeat(
+                    fps=fps,
+                    cpu_temp_c=_read_cpu_temp(),
+                    ram_used_gb=_read_ram_gb(),
+                    distance_cm=distance_cm,
+                    pipeline_stage=pipeline_stage,
+                    container_uptime_s=int(time.monotonic() - start_time),
+                )
+            except Exception as exc:
+                # Heartbeat is best-effort telemetry; never let a transient
+                # MQTT hiccup kill the daemon thread, but do record it.
+                logger.debug("heartbeat publish failed: %s", exc)
+
+    hb_thread = threading.Thread(target=heartbeat_loop, daemon=True)
+    hb_thread.start()
+
+    # ── Camera ────────────────────────────────────────────────────────────
+    if source == "shm":
+        cap = GstShmCapture()
+        if not cap.isOpened():
+            raise RuntimeError(
+                f"無法開啟共享記憶體相機源（socket={_SHM_SOCKET}）。"
+                "請先在 host 執行 deploy/start_camera_bridge.sh"
+            )
+        print(f"[Pipeline] 相機源：shm（{_SHM_WIDTH}x{_SHM_HEIGHT}@{_SHM_FPS}）")
+    else:
+        cap = cv2.VideoCapture(gstreamer_pipeline(), cv2.CAP_GSTREAMER)
+        if not cap.isOpened():
+            raise RuntimeError("無法開啟 CSI 相機")
+        print("[Pipeline] 相機源：csi（nvarguscamerasrc）")
+
+    print(
+        f"[Pipeline] gate={_GATE_DISTANCE_CM:.0f}cm  "
+        f"liveness frame={_LIVENESS_FRAME} thr={_LIVENESS_THRESHOLD}  "
+        f"spoof_confirm={_SPOOF_CONFIRM_FRAMES} frames"
+    )
+    print("\n[Pipeline] 啟動！按 Q 或 Ctrl+C 結束。\n")
 
     try:
         while True:
@@ -234,74 +475,171 @@ def run_pipeline(config: dict, display: bool = True) -> None:
             if not ret:
                 continue
 
-            frame_count += 1
+            # ── Sense: HC-SR04 gate ───────────────────────────────────────
+            distance_cm = sensor._measure_distance()
+            gate_open = (
+                distance_cm != float("inf")
+                and distance_cm < _GATE_DISTANCE_CM
+            )
 
-            # ── Sense：人臉偵測 ───────────────────────────────────────────
+            # ── Gate closed or in cooldown → IDLE ────────────────────────
+            if not gate_open or time.monotonic() < grant_until:
+                pipeline_stage = _STAGE_IDLE
+
+                # FPS update
+                frame_count += 1
+                now = time.monotonic()
+                elapsed = now - fps_window_start
+                if elapsed >= 1.0:
+                    fps = frame_count / elapsed
+                    frame_count = 0
+                    fps_window_start = now
+
+                if display:
+                    vis = draw_overlay(frame, [], [], fps, distance_cm, pipeline_stage)
+                    cv2.imshow("Smart Access Control", vis)
+                    if cv2.waitKey(1) & 0xFF in (ord("q"), 27):
+                        break
+                continue
+
+            # ── Stage 1: Face detection ───────────────────────────────────
+            pipeline_stage = _STAGE_DETECTING
             faces = detector.detect(frame)
 
-            decisions = []
-            for face in faces:
-                if face.crop is None or face.crop.size == 0:
-                    decisions.append((False, "unknown", "no crop"))
-                    continue
+            if not faces:
+                # Gate triggered but no face
+                publisher.publish_event(
+                    decision="IGNORE",
+                    identity="unknown",
+                    similarity=0.0,
+                    spoof_score=0.0,
+                    is_live=False,
+                    face_in_db=False,
+                    consecutive_frames=voter.consecutive_frames,
+                    bbox=None,
+                )
+                frame_count += 1
+                now = time.monotonic()
+                elapsed = now - fps_window_start
+                if elapsed >= 1.0:
+                    fps = frame_count / elapsed
+                    frame_count = 0
+                    fps_window_start = now
+                if display:
+                    vis = draw_overlay(frame, [], [], fps, distance_cm, pipeline_stage)
+                    cv2.imshow("Smart Access Control", vis)
+                    if cv2.waitKey(1) & 0xFF in (ord("q"), 27):
+                        break
+                continue
 
-                # ── Process：辨識 + 活體 ─────────────────────────────────
-                recog = recognizer.match(face.crop)
-                liveness = antispoof.predict(face.crop)
+            # Process highest-confidence face only
+            face = faces[0]
+            bbox = face.bbox.astype(int).tolist()
 
-                # ── Decide：三條件判斷 ───────────────────────────────────
-                blink_result = blink_detector.update(frame)
+            # ── Stage 2 & 3: Recognition + anti-spoof ────────────────────
+            pipeline_stage = _STAGE_MATCHING
+            recog = recognizer.match(face.crop)
+            # Anti-spoof: feed the framing chosen by LIVENESS_FRAME. The full
+            # frame matches the enrollment capture distribution and is far more
+            # stable than the detector's tight crop. Recognition keeps the
+            # tight crop above.
+            if _LIVENESS_FRAME == "crop":
+                live_input = _expand_crop(frame, face.bbox, _LIVENESS_CROP_SCALE)
+            else:
+                live_input = frame
+            liveness = antispoof.predict(live_input)
 
-                if not blink_result.blink_confirmed:
-                    decisions.append(
-                        (False, recog.name, f"請眨眼 ({blink_result.blink_count}/2)")
+            anti_spoof_pass = liveness.score >= _LIVENESS_THRESHOLD
+            face_in_db = recog.authorized
+
+            # ── Stage 4: Decision (policy extracted to make_decision) ─────
+            pipeline_stage = _STAGE_DECIDED
+            decision, spoof_streak = make_decision(recog, liveness, voter, spoof_streak)
+
+            identity = recog.name if recog.name else "unknown"
+
+            print(
+                f"[DECISION] {decision:<7} identity={identity:<10} "
+                f"sim={recog.similarity:.3f} live={liveness.score:.3f} "
+                f"frames={voter.consecutive_frames}/{cfg_recog['confirm_frames']}"
+            )
+
+            # ── Publish event (same format as orchestrator.py) ────────────
+            publisher.publish_event(
+                decision=decision,
+                identity=identity,
+                similarity=recog.similarity,
+                spoof_score=liveness.score,
+                is_live=anti_spoof_pass,
+                face_in_db=face_in_db,
+                consecutive_frames=voter.consecutive_frames,
+                bbox=bbox,
+            )
+
+            # ── Act: actuator + door state ────────────────────────────────
+            if decision == "GRANT":
+                grant_until = time.monotonic() + _GRANT_COOLDOWN_S
+                threading.Thread(
+                    target=actuator.grant_access, daemon=False
+                ).start()
+                # Publish status: unlocked
+                if door_state != "unlocked":
+                    door_state = "unlocked"
+                    last_person = identity
+                    publisher.publish_status(
+                        door_state="unlocked", last_person=identity
                     )
-                    continue
+                voter.reset()
+                # Schedule auto-relock status
+                def _relock(name: str = identity) -> None:
+                    time.sleep(_GRANT_COOLDOWN_S)
+                    nonlocal door_state
+                    door_state = "locked"
+                    publisher.publish_status(
+                        door_state="locked", last_person=name
+                    )
+                threading.Thread(target=_relock, daemon=True).start()
 
-                granted, name, reason = make_decision(recog, liveness, voter)
-                decisions.append((granted, name, reason))
-
-                # Log
+            elif decision in ("DENY", "UNKNOWN", "SPOOF") and time.monotonic() >= alert_until:
+                # Debounce DENY/UNKNOWN/SPOOF: fire the actuator at most once
+                # per _ALERT_COOLDOWN_S. Without this, a model that keeps
+                # emitting UNKNOWN for the same person re-triggers the LED/buzzer
+                # every ~2 s and sounds like a non-stop beep.
+                alert_until = time.monotonic() + _ALERT_COOLDOWN_S
                 print(
-                    f"[Frame {frame_count:05d}] "
-                    f"name={recog.name:<10} sim={recog.similarity:.3f} "
-                    f"live={liveness.score:.3f} "
-                    f"{'✅ GRANTED' if granted else '❌ ' + reason}"
+                    f"[ACT] {decision} alert fired — "
+                    f"suppressed for {_ALERT_COOLDOWN_S:.1f}s"
                 )
 
-                # ── Act：授權觸發（Week 13 GPIO 整合） ───────────────────
-                if granted:
-                    blink_detector.reset()
-                    print(f"[ACCESS] 授權：{name}，門鎖開啟 3 秒")
-                    publisher.publish_event(
-                        name, recog.similarity, liveness.score, True, reason
-                    )
-                    publisher.publish_status("unlocked", name)
-                    # TODO: Member B — gpio.unlock()
-                    voter.reset()
-
-                    def _lock_after_delay():
-                        time.sleep(3)
-                        publisher.publish_status("locked")
-                        # TODO: Member B — gpio.lock()
-
-                    threading.Thread(target=_lock_after_delay, daemon=True).start()
+                if decision == "SPOOF":
+                    # Red LED + buzzer (demonstrates spoof rejection)
+                    threading.Thread(
+                        target=actuator.alert_spoof, daemon=False
+                    ).start()
                 else:
-                    publisher.publish_event(
-                        name, recog.similarity, liveness.score, False, reason
-                    )
-                    # TODO: Member B — 若連續拒絕 N 次，呼叫 gpio.deny()，紅燈亮、buzzer 警告音
+                    # DENY / UNKNOWN — red LED only, no buzzer
+                    threading.Thread(
+                        target=actuator.deny_access, daemon=False
+                    ).start()
 
-            # ── FPS 計算 ──────────────────────────────────────────────────
-            now = time.time()
-            if now - prev_time >= 1.0:
-                fps = frame_count / (now - prev_time)
+            # ── FPS update ────────────────────────────────────────────────
+            frame_count += 1
+            now = time.monotonic()
+            elapsed = now - fps_window_start
+            if elapsed >= 1.0:
+                fps = frame_count / elapsed
                 frame_count = 0
-                prev_time = now
+                fps_window_start = now
 
             # ── Display ───────────────────────────────────────────────────
             if display:
-                vis = draw_overlay(frame, faces, decisions, fps)
+                decisions_overlay = [
+                    (decision, identity, recog.similarity, anti_spoof_pass)
+                ]
+                vis = draw_overlay(
+                    frame, [face], decisions_overlay, fps,
+                    distance_cm, pipeline_stage
+                )
                 cv2.imshow("Smart Access Control", vis)
                 if cv2.waitKey(1) & 0xFF in (ord("q"), 27):
                     break
@@ -312,11 +650,16 @@ def run_pipeline(config: dict, display: bool = True) -> None:
         cap.release()
         if display:
             cv2.destroyAllWindows()
+        actuator.cleanup()
+        publisher.disconnect()
         print("[Pipeline] 結束。")
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 def main() -> None:
+    """CLI entry point."""
     parser = argparse.ArgumentParser(description="智慧門禁系統主程式")
     parser.add_argument(
         "--config",
@@ -329,11 +672,17 @@ def main() -> None:
         action="store_true",
         help="headless 模式（不顯示畫面）",
     )
+    parser.add_argument(
+        "--source",
+        choices=["csi", "shm"],
+        default=os.environ.get("CAMERA_SOURCE", "csi"),
+        help="相機來源：csi=直接開 CSI（host）；shm=共享記憶體橋接（容器）",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
-    run_pipeline(config, display=not args.no_display)
+    run_pipeline(config, display=not args.no_display, source=args.source)
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     main()

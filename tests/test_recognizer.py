@@ -5,16 +5,18 @@
 """Unit tests for src/recognition/recognizer.py."""
 
 import sys
-
-# 1. 強制洗清人臉辨識與人臉偵測的全域 Mock 污染緩存
-for key in list(sys.modules.keys()):
-    if "src.recognition" in key or "src.detection" in key:
-        sys.modules.pop(key, None)
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from unittest.mock import MagicMock, patch
-from src.recognition.recognizer import FaceRecognizer
+
+# 移除 conftest 對 src.recognition/detection 的 stub 改用真實模組，並 stub
+# onnxruntime 讓真實 recognizer 能在無 onnxruntime 的 CI runner 上 import。
+for _key in [k for k in sys.modules if "src.recognition" in k or "src.detection" in k]:
+    sys.modules.pop(_key, None)
+sys.modules.setdefault("onnxruntime", MagicMock())
+
+from src.recognition.recognizer import FaceRecognizer  # noqa: E402
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────

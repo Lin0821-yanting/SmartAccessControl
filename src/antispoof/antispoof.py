@@ -25,7 +25,7 @@ class AntiSpoof:
     def __init__(
         self,
         onnx_path: str = "models/weights/minifasnet.onnx",
-        threshold: float = 0.9,
+        threshold: float = 0.6,
         input_size: int = 128,
     ):
         self.threshold = threshold
@@ -52,7 +52,7 @@ class AntiSpoof:
         )
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     import sys
 
     img_path = sys.argv[1] if len(sys.argv) > 1 else "data/enrollment/henry/0000.jpg"

@@ -282,9 +282,7 @@ class MqttPublisher:
         body = payload if isinstance(payload, str) else json.dumps(payload)
         info = self._client.publish(topic, body, qos=qos)
         if info.rc != mqtt.MQTT_ERR_SUCCESS:
-            logger.warning(
-                "MqttPublisher: publish failed rc=%d topic=%s", info.rc, topic
-            )
+            logger.warning("MqttPublisher: publish failed rc=%d topic=%s", info.rc, topic)
             return False
         return True
 
@@ -295,22 +293,14 @@ class MqttPublisher:
     def _on_connect(self, client, userdata, connect_flags, rc, properties=None) -> None:  # noqa: ANN001
         if rc == 0:
             self._connected = True
-            logger.info(
-                "MqttPublisher: connected to %s:%d",
-                self._broker_host,
-                self._broker_port,
-            )
+            logger.info("MqttPublisher: connected to %s:%d", self._broker_host, self._broker_port)
         else:
             logger.error("MqttPublisher: connect failed rc=%d", rc)
 
-    def _on_disconnect(
-        self, client, userdata, disconnect_flags, rc, properties=None
-    ) -> None:  # noqa: ANN001
+    def _on_disconnect(self, client, userdata, disconnect_flags, rc, properties=None) -> None:  # noqa: ANN001
         self._connected = False
         if rc != 0:
-            logger.warning(
-                "MqttPublisher: unexpected disconnect rc=%d — paho will retry", rc
-            )
+            logger.warning("MqttPublisher: unexpected disconnect rc=%d — paho will retry", rc)
 
 
 # ---------------------------------------------------------------------------

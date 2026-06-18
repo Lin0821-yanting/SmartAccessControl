@@ -17,15 +17,21 @@ models:
     engine: models/weights/minifasnet.onnx
 
 recognition:
-  similarity_threshold: 0.75
-  confirm_frames: 2
+  similarity_threshold: 0.5
+  # GRANT requires this many CONSECUTIVE recognized+live frames. Raised to 4 so
+  # the weak per-frame liveness separation (real ~56% vs photo ~21% pass at
+  # threshold 0.3) is amplified: real 0.56^4≈10% grants in ~1s, photo
+  # 0.21^4≈0.2% almost never falsely opens the door.
+  confirm_frames: 4
   db_path: data/face_db.npy
 
 gpio:
   servo_pin: 33
-  green_led_pin: 16
-  red_led_pin: 18
-  buzzer_pin: 22
+  green_led_pin: 7
+  red_led_pin: 11
+  buzzer_pin: 29
+  trig_pin: 31
+  echo_pin: 15
 
 mqtt:
   broker: localhost

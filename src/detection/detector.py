@@ -10,7 +10,6 @@ YOLOv8n-face TensorRT FP16 推論器。
 """
 
 from dataclasses import dataclass, field
-from typing import List
 
 import cv2
 import numpy as np
@@ -48,7 +47,7 @@ class FaceDetector:
         self.model = YOLO(engine_path, task="pose")
         print(f"[FaceDetector] 載入 engine：{engine_path}")
 
-    def detect(self, frame: np.ndarray) -> List[FaceDetection]:
+    def detect(self, frame: np.ndarray) -> list[FaceDetection]:
         """
         對單張影像進行人臉偵測。
 
@@ -127,7 +126,7 @@ class FaceDetector:
 
 
 # ── Quick test ───────────────────────────────────────────────────────────────
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     import sys
 
     img_path = sys.argv[1] if len(sys.argv) > 1 else "data/enrollment/henry/0000.jpg"
@@ -141,6 +140,4 @@ if __name__ == "__main__":  # pragma: no cover
     faces = detector.detect(img)
     print(f"偵測到 {len(faces)} 張人臉")
     for i, face in enumerate(faces):
-        print(
-            f"  [{i}] conf={face.confidence:.3f}  bbox={face.bbox}  crop={face.crop.shape}"
-        )
+        print(f"  [{i}] conf={face.confidence:.3f}  bbox={face.bbox}  crop={face.crop.shape}")

@@ -11,17 +11,18 @@ Run with:
 from __future__ import annotations
 
 import json
+from typing import ClassVar
 from unittest.mock import MagicMock
+
 import pytest
 
 from src.mqtt_publisher import (
-    MqttPublisher,
-    TOPIC_EVENTS,
-    TOPIC_STATUS,
-    TOPIC_HEARTBEAT,
     QOS_STATUS,
+    TOPIC_EVENTS,
+    TOPIC_HEARTBEAT,
+    TOPIC_STATUS,
+    MqttPublisher,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -30,7 +31,7 @@ from src.mqtt_publisher import (
 
 @pytest.fixture()
 def mock_client() -> MagicMock:
-    """A mock paho Client with publish() returning a success MagicMock."""
+    """Return a mock paho Client with publish() returning a success MagicMock."""
     client = MagicMock()
     result = MagicMock()
     result.rc = 0  # MQTT_ERR_SUCCESS
@@ -57,8 +58,8 @@ class TestConnectionState:
         self, publisher: MqttPublisher, mock_client: MagicMock
     ) -> None:
         # Force connected flag so connect() doesn't time-out waiting
-        def fake_connect(*args, **kwargs):  # noqa: ANN001, ANN002, ANN003
-            publisher._connected = True  # noqa: SLF001
+        def fake_connect(*args, **kwargs):
+            publisher._connected = True
 
         mock_client.connect.side_effect = fake_connect
         publisher.connect()
@@ -135,7 +136,7 @@ class TestPublishLowLevel:
 
 
 class TestPublishEvent:
-    _BASE_KWARGS = dict(
+    _BASE_KWARGS: ClassVar[dict] = dict(
         decision="GRANT",
         identity="alice",
         similarity=0.921,
@@ -210,9 +211,7 @@ class TestPublishStatus:
         assert args[0] == TOPIC_STATUS
         assert kwargs.get("qos") == QOS_STATUS or args[2] == QOS_STATUS
 
-    def test_payload_schema(
-        self, publisher: MqttPublisher, mock_client: MagicMock
-    ) -> None:
+    def test_payload_schema(self, publisher: MqttPublisher, mock_client: MagicMock) -> None:
         publisher._connected = True
         publisher.publish_status(door_state="locked", last_person="unknown")
         args, _ = mock_client.publish.call_args
@@ -228,7 +227,7 @@ class TestPublishStatus:
 
 
 class TestPublishHeartbeat:
-    _BASE_KWARGS = dict(
+    _BASE_KWARGS: ClassVar[dict] = dict(
         fps=18.5,
         cpu_temp_c=52.3,
         ram_used_gb=2.1,

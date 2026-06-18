@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 <Yanting Lin>, <Partner's Name>
+# Copyright (c) 2026 <Yanting Lin>
 # Tatung University — I4210 AI實務專題
 """HC-SR04 ultrasonic distance sensor driver for the Jetson 40-pin header.
 
@@ -88,9 +88,7 @@ class HcSr04:
         if recovered:
             logger.info("HC-SR04: ECHO recovered")
         else:
-            logger.error(
-                "HC-SR04: ECHO still HIGH after recovery — power-cycle required"
-            )
+            logger.error("HC-SR04: ECHO still HIGH after recovery — power-cycle required")
         return recovered
 
     def _measure_distance(self) -> float:
@@ -128,9 +126,7 @@ class HcSr04:
 
     def _confirmed_near(self) -> bool:
         hits = sum(
-            1
-            for _ in range(_CONFIRM_SAMPLES)
-            if self._measure_distance() <= self.threshold_cm
+            1 for _ in range(_CONFIRM_SAMPLES) if self._measure_distance() <= self.threshold_cm
         )
         return hits >= _CONFIRM_HITS
 

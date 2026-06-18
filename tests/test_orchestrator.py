@@ -13,6 +13,7 @@ Strategy
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from unittest.mock import MagicMock, patch
@@ -22,7 +23,6 @@ import pytest
 
 from src.decision_engine import Decision, DecisionEngine
 from src.orchestrator import Orchestrator, _read_cpu_temp, _read_ram_gb
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -119,14 +119,14 @@ class TestInit:
 
 class TestTickGate:
     def test_gate_closed_timeout_skips_pipeline(self, orc, mocks):
-        """inf distance (timeout) must skip AI pipeline."""
+        """Inf distance (timeout) must skip AI pipeline."""
         with patch.object(orc._sensor, "_measure_distance", return_value=float("inf")):
             orc._tick(_blank())
         mocks["detector"].detect.assert_not_called()
 
     def test_gate_closed_large_distance_skips_pipeline(self, orc, mocks):
-        """Distance >= 60 cm must skip AI pipeline."""
-        with patch.object(orc._sensor, "_measure_distance", return_value=80.0):
+        """Distance >= 100 cm must skip AI pipeline."""
+        with patch.object(orc._sensor, "_measure_distance", return_value=120.0):
             orc._tick(_blank())
         mocks["detector"].detect.assert_not_called()
 
@@ -138,7 +138,7 @@ class TestTickGate:
         mocks["detector"].detect.assert_not_called()
 
     def test_gate_open_calls_detector(self, orc, mocks):
-        """Distance < 60 cm with no cooldown must call detector."""
+        """Distance < 100 cm with no cooldown must call detector."""
         mocks["detector"].detect.return_value = []
         with patch.object(orc._sensor, "_measure_distance", return_value=40.0):
             orc._tick(_blank())
@@ -211,13 +211,8 @@ class TestTickGrant:
 
     def test_grant_event_carries_correct_identity(self, orc, mocks):
         for _ in range(3):
-            self._tick_matching(
-                orc, mocks, recog=_make_recog(name="bob", similarity=0.93)
-            )
-        assert (
-            mocks["publisher"].publish_event.call_args_list[-1].kwargs["identity"]
-            == "bob"
-        )
+            self._tick_matching(orc, mocks, recog=_make_recog(name="bob", similarity=0.93))
+        assert mocks["publisher"].publish_event.call_args_list[-1].kwargs["identity"] == "bob"
 
 
 # ---------------------------------------------------------------------------
@@ -254,9 +249,7 @@ class TestTickUnknown:
         with patch.object(orc._sensor, "_measure_distance", return_value=30.0):
             orc._tick(_blank())
         time.sleep(0.05)
-        assert (
-            mocks["publisher"].publish_event.call_args.kwargs["decision"] == "UNKNOWN"
-        )
+        assert mocks["publisher"].publish_event.call_args.kwargs["decision"] == "UNKNOWN"
         mocks["actuator"].alert_unknown.assert_called_once()
 
 
@@ -269,9 +262,7 @@ class TestTickSpoof:
     def test_spoof_calls_alert_spoof(self, orc, mocks):
         mocks["detector"].detect.return_value = [_make_face()]
         mocks["recognizer"].match.return_value = _make_recog()
-        mocks["antispoof"].predict.return_value = _make_liveness(
-            is_live=False, score=0.20
-        )
+        mocks["antispoof"].predict.return_value = _make_liveness(is_live=False, score=0.20)
         with patch.object(orc._sensor, "_measure_distance", return_value=30.0):
             orc._tick(_blank())
         time.sleep(0.05)
@@ -281,9 +272,7 @@ class TestTickSpoof:
     def test_spoof_event_carries_spoof_score(self, orc, mocks):
         mocks["detector"].detect.return_value = [_make_face()]
         mocks["recognizer"].match.return_value = _make_recog()
-        mocks["antispoof"].predict.return_value = _make_liveness(
-            is_live=False, score=0.15
-        )
+        mocks["antispoof"].predict.return_value = _make_liveness(is_live=False, score=0.15)
         with patch.object(orc._sensor, "_measure_distance", return_value=30.0):
             orc._tick(_blank())
         kwargs = mocks["publisher"].publish_event.call_args.kwargs
@@ -448,11 +437,9 @@ class TestHeartbeatLoop:
             patch("src.orchestrator.time.sleep", side_effect=fake_sleep),
             patch("src.orchestrator._read_cpu_temp", return_value=55.0),
             patch("src.orchestrator._read_ram_gb", return_value=2.5),
+            contextlib.suppress(SystemExit),
         ):
-            try:
-                orc._heartbeat_loop()
-            except SystemExit:
-                pass
+            orc._heartbeat_loop()
 
         mocks["publisher"].publish_heartbeat.assert_called_once()
 
@@ -466,11 +453,11 @@ class TestHeartbeatLoop:
 
         mocks["publisher"].publish_heartbeat.side_effect = RuntimeError("broker down")
 
-        with patch("src.orchestrator.time.sleep", side_effect=fake_sleep):
-            try:
-                orc._heartbeat_loop()
-            except SystemExit:
-                pass
+        with (
+            patch("src.orchestrator.time.sleep", side_effect=fake_sleep),
+            contextlib.suppress(SystemExit),
+        ):
+            orc._heartbeat_loop()
 
 
 # ---------------------------------------------------------------------------
@@ -495,9 +482,7 @@ class TestSystemMetrics:
     def test_read_ram_gb_happy_path(self, tmp_path):
         fake = tmp_path / "meminfo"
         fake.write_text(
-            "MemTotal:       8388608 kB\n"
-            "MemFree:        2097152 kB\n"
-            "MemAvailable:   4194304 kB\n"
+            "MemTotal:       8388608 kB\nMemFree:        2097152 kB\nMemAvailable:   4194304 kB\n"
         )
         with patch("src.orchestrator.Path", return_value=fake):
             result = _read_ram_gb()

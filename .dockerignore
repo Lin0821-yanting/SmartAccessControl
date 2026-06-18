@@ -1,0 +1,30 @@
+# --- Python ---
+.venv/
+.pdm-build/
+__pycache__/
+*.pyc
+*.pyo
+.mypy_cache/
+.pytest_cache/
+htmlcov/
+*.egg-info/
+
+# --- Git ---
+.git/
+.github/
+
+# --- Tests (not needed in image) ---
+tests/
+
+# --- Models: engines built at container startup via entrypoint.sh ---
+# ONNX weights ARE copied into the image; TRT engines are NOT
+models/engines/
+
+# --- Data: face_db and enrollment photos are mounted as volumes ---
+data/face_db.npy
+
+# --- Local dev artefacts ---
+*.md
+*.pdf
+*.log
+evidence/

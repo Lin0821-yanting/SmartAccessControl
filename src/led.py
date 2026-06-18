@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 <Yanting Lin>, <Partner's Name>
+# Copyright (c) 2026 <Yanting Lin>
 # Tatung University — I4210 AI實務專題
 """GRANT/DENY indicator LED driver for the Jetson 40-pin header.
 
@@ -21,9 +21,7 @@ RED_LED_HOLD_S: float = 2.0
 class LED:
     """GRANT/DENY indicator LEDs on the Jetson 40-pin header."""
 
-    def __init__(
-        self, green_pin: int = GREEN_LED_PIN, red_pin: int = RED_LED_PIN
-    ) -> None:
+    def __init__(self, green_pin: int = GREEN_LED_PIN, red_pin: int = RED_LED_PIN) -> None:
         """Initialise GPIO pins for green and red LEDs.
 
         Parameters

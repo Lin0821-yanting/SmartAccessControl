@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "description": "Accuracy gate baseline for the Smart Access Control liveness/decision pipeline. Metrics are measured on the held-out evaluation set (genuine person vs phone/print photo) at the final demo parameters. The gate asserts each measured metric stays within its min/max bound, so a model or parameter regression fails CI. Regenerate from a recorded session with scripts/eval_accuracy.py. See README.md (活體偵測與蜂鳴器設計決策 / 測試情境設計與統計方法).",
+  "evaluation_config": {
+    "gate_distance_cm": 100,
+    "liveness_threshold": 0.3,
+    "confirm_frames_grant": 4,
+    "spoof_confirm_frames": 5,
+    "liveness_frame": "full"
+  },
+  "test_set": {
+    "genuine_frames": 112,
+    "spoof_frames": 340,
+    "source": "README.md §5 最終驗證結果 (genuine person vs phone photo, gate=100cm)"
+  },
+  "metrics": {
+    "false_accept_rate": {
+      "description": "Fraction of spoof (photo/screen) frames that opened the door (GRANT). Most critical metric — a photo must never open the door.",
+      "measured": 0.0,
+      "max": 0.01
+    },
+    "spoof_rejection_rate": {
+      "description": "Fraction of spoof attempts that did NOT open the door (1 - FAR at session level).",
+      "measured": 1.0,
+      "min": 0.95
+    },
+    "genuine_grant_events": {
+      "description": "Number of GRANT events for the genuine enrolled person during the session (>=1 means the door opened for the right person).",
+      "measured": 3,
+      "min": 1
+    },
+    "nuisance_alarm_rate": {
+      "description": "Fraction of genuine frames that triggered the buzzer (SPOOF alarm fired at a real person). Should be ~0.",
+      "measured": 0.0,
+      "max": 0.05
+    },
+    "genuine_live_median": {
+      "description": "Median MiniFASNet live score for the genuine person at gate=100cm with full-frame input.",
+      "measured": 0.261,
+      "min": 0.2
+    },
+    "spoof_live_median": {
+      "description": "Median MiniFASNet live score for spoof (photo) samples.",
+      "measured": 0.174,
+      "max": 0.25
+    },
+    "liveness_margin": {
+      "description": "genuine_live_median minus spoof_live_median; positive margin means the two classes are separable by the threshold.",
+      "measured": 0.087,
+      "min": 0.03
+    }
+  }
+}
