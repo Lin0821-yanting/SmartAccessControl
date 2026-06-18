@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 <Yanting Lin>, <Partner's Name>
+# Copyright (c) 2026 <Yanting Lin>, <henrytsai>
 # Tatung University — I4210 AI實務專題
 """Smart Access Control — hardware driver package.
 

@@ -153,7 +153,12 @@ markers = [
 
 [tool.coverage.run]
 source = ["src"]
-omit = ["src/__init__.py", "tests/*"]
+# src/pipeline/main.py is the hardware integration loop (CSI camera + GPIO +
+# threads); its pure logic (TemporalVoter, make_decision) is unit-tested in
+# tests/test_pipeline.py, while run_pipeline itself is exercised by the Jetson
+# integration tests. It is excluded from ruff for the same reason, so it is
+# omitted from unit coverage here too.
+omit = ["src/__init__.py", "src/pipeline/main.py", "tests/*"]
 branch = true
 
 [tool.coverage.report]

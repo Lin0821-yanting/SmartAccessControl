@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2026 Yanting Lin, henrytsai
+# Copyright (c) 2026 Yanting Lin
 # Tatung University — I4210 AI實務專題
 """src/orchestrator.py — top-level integration loop.
 

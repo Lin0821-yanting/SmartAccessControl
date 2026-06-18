@@ -287,6 +287,41 @@ class TemporalVoter:
 
 
 # ---------------------------------------------------------------------------
+# Per-frame decision policy (pure logic — unit-testable, see tests/test_pipeline.py)
+# ---------------------------------------------------------------------------
+def make_decision(
+    recog: object,
+    liveness: object,
+    voter: TemporalVoter,
+    spoof_streak: int,
+) -> tuple[str, int]:
+    """決定單幀結果，回傳 (decision, spoof_streak)。
+
+    與 run_pipeline 的 Stage 4 同一套政策，抽成純函式以便單元測試（無硬體）。
+    decision ∈ {GRANT, DENY, UNKNOWN, SPOOF, IGNORE}。優先序：
+
+      1. liveness.score < _LIVENESS_THRESHOLD → 累計連續活體失敗幀；連續達
+         _SPOOF_CONFIRM_FRAMES 幀才判 SPOOF，否則 IGNORE（避免真人偶爾掉分誤報）。
+         任何活體失敗都會 reset voter。
+      2. recog.authorized 為 False → UNKNOWN（reset voter）。
+      3. 活體通過且在 DB → 連續幀投票：同一人連續達標才 GRANT，否則 DENY。
+    """
+    if liveness.score < _LIVENESS_THRESHOLD:
+        spoof_streak += 1
+        voter.reset()
+        decision = "SPOOF" if spoof_streak >= _SPOOF_CONFIRM_FRAMES else "IGNORE"
+        return decision, spoof_streak
+
+    spoof_streak = 0
+    if not recog.authorized:
+        voter.reset()
+        return "UNKNOWN", spoof_streak
+
+    authorized, _matched = voter.vote(recog.name)
+    return ("GRANT" if authorized else "DENY"), spoof_streak
+
+
+# ---------------------------------------------------------------------------
 # Draw overlay
 # ---------------------------------------------------------------------------
 def draw_overlay(
@@ -517,27 +552,9 @@ def run_pipeline(config: dict, display: bool = True, source: str = "csi") -> Non
             anti_spoof_pass = liveness.score >= _LIVENESS_THRESHOLD
             face_in_db = recog.authorized
 
-            # ── Stage 4: Decision ─────────────────────────────────────────
+            # ── Stage 4: Decision (policy extracted to make_decision) ─────
             pipeline_stage = _STAGE_DECIDED
-
-            if not anti_spoof_pass:
-                # Liveness failed THIS frame. Require several CONSECUTIVE fail
-                # frames before declaring SPOOF: a real face only dips below
-                # threshold sporadically, whereas a real photo/screen fails
-                # persistently. Below the streak we emit IGNORE (no actuator).
-                spoof_streak += 1
-                voter.reset()
-                decision = "SPOOF" if spoof_streak >= _SPOOF_CONFIRM_FRAMES else "IGNORE"
-            else:
-                spoof_streak = 0
-                if not face_in_db:
-                    # UNKNOWN
-                    decision = "UNKNOWN"
-                    voter.reset()
-                else:
-                    # Check temporal consistency
-                    authorized, matched_name = voter.vote(recog.name)
-                    decision = "GRANT" if authorized else "DENY"
+            decision, spoof_streak = make_decision(recog, liveness, voter, spoof_streak)
 
             identity = recog.name if recog.name else "unknown"
 
