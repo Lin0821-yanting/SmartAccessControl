@@ -86,11 +86,18 @@ fi
 date +%s > "$HEALTH_FILE"
 log "Health file initialised at $HEALTH_FILE"
 
-# ── 5. Start orchestrator ──────────────────────────────────────────────────────
-log "Starting Smart Access Control orchestrator..."
+# ── 5. Start the access-control pipeline (Direction C: shm camera) ──────────────
+log "Starting Smart Access Control pipeline..."
 log "  Config     : $CONFIG"
 log "  MQTT broker: ${MQTT_BROKER}:${MQTT_PORT}"
 
-exec python3 -m src.orchestrator \
-    --config "$CONFIG" \
-    "$@"
+# Run the command passed by docker-compose / docker run if one is given;
+# otherwise default to the Direction C pipeline (src/pipeline/main.py reads CSI
+# frames bridged from the host over POSIX shared memory). The previous
+# orchestrator entrypoint opened the CSI camera directly, which cannot work
+# inside the container (Argus EGLDisplay wall — see README problem 1), and it
+# also ignored the compose command, causing an "unrecognized arguments" crash.
+if [ "$#" -gt 0 ]; then
+    exec "$@"
+fi
+exec python3 src/pipeline/main.py --no-display --source "${CAMERA_SOURCE:-shm}"
