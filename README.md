@@ -166,6 +166,15 @@ sudo systemctl start mosquitto
 pdm run python src/pipeline/main.py              # 有畫面
 pdm run python src/pipeline/main.py --no-display  # headless
 ```
+> ⚠️ **目前已知問題（尚未解決）**
+> - **CSI 相機**：本機 `/usr/local` 的 OpenCV 目前被重裝成**未含 GStreamer** 的版本
+>   （`getBuildInformation` 顯示 `GStreamer: NO`），因此 `--source csi`（cv2 開 CSI）暫時無法使用；
+>   需重裝帶 GStreamer 的 opencv 才能在 host 直接開相機。
+> - **記憶體**：在 8GB Orin Nano 上把三個模型（YOLO TRT + MobileFaceNet + MiniFASNet）都載到 GPU 會
+>   記憶體不足（`CUBLAS_STATUS_ALLOC_FAILED` / NvMap `ENOMEM`），第 3 個模型會失敗——
+>   需先釋放記憶體（關閉 VSCode 等大型程式 + `drop_caches`）。
+> - 已實測 **可運作的部分**：YOLO 偵測 ✅、MobileFaceNet 辨識 ✅、MQTT（events/status/heartbeat）✅、
+>   HC-SR04（單獨讀取）✅。
 
 ### B. Docker（容器跑完整 AI pipeline，相機走共享記憶體橋接）
 ```bash
@@ -302,6 +311,17 @@ CSI 不走 `/dev/video0`，而是容器內 `nvarguscamerasrc` → host `nvargus-
 - 容器須 `--ipc=host`（POSIX shm 在 `/dev/shm`，需共用 IPC namespace）。
 - 容器 cv2 未編 GStreamer → 用 **PyGObject appsink** 讀影格，包成 cv2 相容介面，主迴圈不變。
 - 容器完全不需 Argus/EGL/nvidia 相機 lib；shm 緩衝僅 ~20MB（非 GB）。
+
+> ⚠️ **目前狀態：橋接機制成立，但容器內完整即時 pipeline 在 8GB Orin Nano 上尚未穩定（未解決）**
+> - ✅ 已驗證：`docker compose up` 正常啟動跑 `main.py --source shm`、容器讀到 shm 相機源、3 模型載入、
+>   MQTT（events/status/heartbeat）正常、`entrypoint.sh` 改跑 `main.py`（原本誤跑 orchestrator 會 crash，已修）。
+> - ❌ **鏡頭未解**：host 相機 bridge 在 main.py 慢迴圈下會 **stall**（shm pool 8 格被慢消費者占滿 →
+>   nvarguscamerasrc 卡住）→ 容器 `fps=0`，YOLO 偶爾拿到壞幀崩潰。
+> - ❌ **記憶體未解**：shm 緩衝本身只 ~20MB，但**模型記憶體**才是瓶頸——容器原掛 CPU-only onnxruntime
+>   （已修正 compose 改掛 GPU 版），然而 8GB 上三模型同時上 GPU 仍會 `CUBLAS_STATUS_ALLOC_FAILED` OOM。
+> - ❌ **HC-SR04**：軟體計時的 ECHO 在容器多執行緒/負載下不穩（idle 讀 999；乾淨單執行緒容器可讀 ~4cm，
+>   故非針腳/DT overlay 問題，DT overlay 是 kernel 層、容器共用已生效）。
+> - 結論：這些是「容器 + shm 橋接 + 8GB + 軟體計時 GPIO」疊加的限制，**尚未完全解決**；可靠 demo 目前走 host。
 
 | 方案 | 容器跑 AI | 複現難度 | 結論 |
 |---|---|---|---|
