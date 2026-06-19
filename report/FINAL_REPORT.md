@@ -327,14 +327,7 @@ committed (and included in the test-artifacts zip); the grader can re-run
 
 ## 9. Individual Reflections
 
-**henrytsai (M1).** I owned the AI inference pipeline — YOLOv8n-face TRT FP16
-export, MobileFaceNet/MiniFASNet ONNX integration, the recognition/anti-spoof
-modules, and the accuracy gate. The biggest thing I learned is that
-edge-AI work is mostly *input engineering*: the same MiniFASNet was unusable or
-reliable depending entirely on framing and distance, and the fix was a
-full-frame input + a temporal-consistency policy, not a new model. I also wrote
-the per-model unit tests and the `accuracy_baseline.json` gate so a regression in
-those scores fails CI.
+**henrytsai (M1).** I owned the AI inference pipeline — YOLOv8n-face TensorRT FP16 export, MobileFaceNet/MiniFASNet ONNX integration, the recognition/anti-spoof modules, MediaPipe-based blink detection, and the MQTT event publisher. The biggest thing I learned is that edge-AI accuracy bugs are rarely about the model itself: I spent more time debugging a cosine-similarity drop from 0.98 to 0.74 (caused by enrollment using full-frame images while inference used YOLO-cropped faces) than I did exporting any of the three TensorRT engines. The same lesson showed up with TensorRT — chaining a TRT-loaded YOLO detector with pycuda-based recognition silently corrupted the shared CUDA context, and the fix was switching the downstream models to ONNX Runtime CUDA, which actually came out 2ms faster than the original TRT+TRT+TRT pipeline. I also learned to verify model provenance before trusting benchmark numbers: my first YOLOv8-face download scored 0.58 confidence and felt unusable, but it was simply the wrong source repo, not a model or threshold problem. I wrote the unit tests for the detector, recognizer, antispoof, blink, and MQTT publisher modules (97% coverage) and set up the symlink-based dependency bridge so the venv could share Jetson's CUDA-linked system packages (torch, cv2, TensorRT) without rebuilding them.
 
 **Yanting Lin (M2).** I owned the hardware/MQTT/orchestration and the DevOps:
 GPIO drivers (LED/Buzzer/Servo/HC-SR04), the `ActuatorController`, the MQTT
