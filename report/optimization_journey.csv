@@ -1,0 +1,8 @@
+step,change,real_person_live_median,photo_opens_door,real_person_buzzed,note
+baseline,tight crop / gate 60cm / liveness_thr 0.6 / 2 frames,0.13,real cannot GRANT,yes (non-stop),pretrained MiniFASNet collapses on live camera
+1,liveness eats full frame (not tight crop),0.76,,,offline median on enrollment photos
+2,HC-SR04 gate 60 -> 100 cm (background enters),0.30,,,live median 0.25-0.35
+3,liveness threshold 0.6 -> 0.3,,,,separates real ~0.35 vs photo ~0.13
+4,GRANT 4 / SPOOF 5 consecutive frames,,no,,temporal consistency: real 0.56^4~10%/s vs photo 0.21^4~0.2%
+5,5 s alert cooldown + UNKNOWN silent,,,no,buzzer no longer fires at a real person
+final,all of the above (shipped),0.261,no (0/340 frames),no (0),FAR=0 / spoof rejection 1.0 / nuisance 0

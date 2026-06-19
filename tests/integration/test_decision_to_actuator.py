@@ -330,7 +330,7 @@ class TestDenyPath:
 
 
 class TestUnknownPath:
-    """臉不在 DB → UNKNOWN → 紅燈 + 三聲 buzzer。."""
+    """臉不在 DB → UNKNOWN → 紅燈（不嗶，README problem-3）。."""
 
     @pytest.fixture(autouse=True)
     def _drive_unknown(self, orc: Orchestrator, ai_mocks: dict) -> None:
@@ -340,15 +340,11 @@ class TestUnknownPath:
         )
         liveness = _make_liveness(is_live=True)
         _run_tick(orc, ai_mocks, recog, liveness)
-        # _multi_beep(3) 有 2 × 0.15 s = 0.30 s 真實 sleep，等 0.5 s。
-        time.sleep(0.5)
+        time.sleep(0.3)  # let the (LED-only) alert thread finish
 
-    def test_buzzer_beeps_exactly_alert_beeps_times(self, hw: dict) -> None:
-        assert hw["buzzer"]._beep.call_count == _ALERT_BEEPS
-
-    def test_each_beep_uses_correct_duration(self, hw: dict) -> None:
-        for c in hw["buzzer"]._beep.call_args_list:
-            assert c == call(_BEEP_ON_S)
+    def test_buzzer_is_silent_on_unknown(self, hw: dict) -> None:
+        # UNKNOWN no longer beeps (only SPOOF alerts) — README problem-3 fix.
+        assert hw["buzzer"]._beep.call_count == 0
 
     def test_red_led_is_called(self, hw: dict) -> None:
         hw["led"].indicate.assert_called_once_with(success=False, duration=_DENY_LED_S)

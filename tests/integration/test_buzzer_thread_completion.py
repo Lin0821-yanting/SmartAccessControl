@@ -183,41 +183,28 @@ def _buzzer_output_calls(gpio_mock) -> list:
 
 
 class TestAlertUnknownGpioSequence:
-    """alert_unknown() 直接呼叫 → GPIO 電位序列正確。."""
+    """alert_unknown() 直接呼叫 → 紅燈，buzzer 完全不驅動（README problem-3）。."""
 
     @pytest.fixture(autouse=True)
     def _run_alert(self, actuator, gpio_mock):
-        """
-        在每個測試前執行 alert_unknown()。.
-
-        patch("time.sleep") 同時抑制：
-          - buzzer._beep() 裡的 time.sleep(duration)
-          - _multi_beep() 裡的 time.sleep(_BEEP_OFF_S).
-        """
+        """在每個測試前執行 alert_unknown()（patch time.sleep 抑制 LED 等待）。."""
         with patch("time.sleep"):
             actuator.alert_unknown()
 
-    def test_total_output_calls_for_buzzer_pin(self, gpio_mock) -> None:
-        """BUZZER_PIN 的 GPIO.output 呼叫總次數必須是 HIGH+LOW 各 3 次。."""
-        calls = _buzzer_output_calls(gpio_mock)
-        assert len(calls) == _EXPECTED_OUTPUT_CALLS
+    def test_buzzer_pin_never_driven(self, gpio_mock) -> None:
+        """UNKNOWN 不嗶：BUZZER_PIN 完全沒有 GPIO.output 呼叫。."""
+        assert _buzzer_output_calls(gpio_mock) == []
 
-    def test_high_pulse_count(self, gpio_mock) -> None:
-        """HIGH 脈衝必須恰好 _ALERT_BEEPS（3）次。."""
+    def test_no_high_pulse(self, gpio_mock) -> None:
+        """UNKNOWN 不嗶：沒有任何 HIGH 脈衝。."""
         calls = _buzzer_output_calls(gpio_mock)
         high_calls = [c for c in calls if c.args[1] == gpio_mock.HIGH]
-        assert len(high_calls) == _ALERT_BEEPS
+        assert len(high_calls) == 0
 
-    def test_pin_ends_in_low_state(self, gpio_mock) -> None:
-        """
-        最後一次對 BUZZER_PIN 的 GPIO.output 必須是 LOW。.
-
-        這是 daemon=False 修正後的核心保證：
-        若執行緒在 _beep() 中間被殺，最後的 LOW 永遠不會執行，
-        pin 會卡在 HIGH。測試確認正常執行路徑下 pin 確實回到 LOW。
-        """
+    def test_buzzer_pin_not_left_high(self, gpio_mock) -> None:
+        """UNKNOWN 不嗶：buzzer 從未被拉 HIGH（無殘留 HIGH 風險）。."""
         calls = _buzzer_output_calls(gpio_mock)
-        assert calls[-1] == call(BUZZER_PIN, gpio_mock.LOW)
+        assert all(c.args[1] != gpio_mock.HIGH for c in calls)
 
     def test_each_beep_alternates_high_then_low(self, gpio_mock) -> None:
         """
@@ -345,7 +332,7 @@ def orc_with_real_buzzer(real_buzzer, gpio_mock):
 
 
 class TestOrchestratorDrivesRealBuzzer:
-    """Orchestrator._tick() 分派 UNKNOWN → 真實 Buzzer 走完 GPIO 序列。."""
+    """Orchestrator._tick() 分派 UNKNOWN → 真實 Buzzer 保持靜音（不嗶）。."""
 
     _THREAD_WAIT_S = 1.5  # 真實 0.90 s 序列 + 執行緒排程餘量
 
@@ -359,34 +346,26 @@ class TestOrchestratorDrivesRealBuzzer:
         with patch.object(orc._sensor, "_measure_distance", return_value=30.0):
             orc._tick(_blank())
 
-    def test_unknown_thread_drives_buzzer_to_low(
+    def test_unknown_thread_leaves_buzzer_silent(
         self, orc_with_real_buzzer: Orchestrator, gpio_mock
     ) -> None:
         """
-        _tick() → UNKNOWN 決策 → 執行緒 → alert_unknown() → pin 最後是 LOW。.
+        _tick() → UNKNOWN → 執行緒 → alert_unknown()：buzzer 不被驅動。.
 
-        這是 IT-2 最接近生產場景的測試：
-        模擬真實的 Orchestrator 在偵測到陌生人臉後分派 alert，
-        確認執行緒正常完成後 GPIO pin 停在安全狀態。
+        UNKNOWN 只亮紅燈、不嗶（README problem-3），故 BUZZER_PIN 全程無輸出。
         """
         self._tick_unknown(orc_with_real_buzzer)
         time.sleep(self._THREAD_WAIT_S)  # 等 alert thread 完成
 
-        calls = _buzzer_output_calls(gpio_mock)
-        assert len(calls) > 0, "alert_unknown() 執行緒未產生任何 GPIO.output 呼叫"
-        assert calls[-1] == call(BUZZER_PIN, gpio_mock.LOW), (
-            "執行緒完成後 BUZZER_PIN 的最後一次 GPIO.output 不是 LOW"
-        )
+        assert _buzzer_output_calls(gpio_mock) == [], "UNKNOWN 不應驅動 BUZZER_PIN"
 
-    def test_unknown_thread_produces_correct_beep_count(
+    def test_unknown_thread_produces_no_beep(
         self, orc_with_real_buzzer: Orchestrator, gpio_mock
     ) -> None:
-        """_tick() 觸發的 alert_unknown() 必須產生恰好 _ALERT_BEEPS 次 HIGH 脈衝。."""
+        """_tick() 觸發的 alert_unknown() 不產生任何 HIGH 脈衝（不嗶）。."""
         self._tick_unknown(orc_with_real_buzzer)
         time.sleep(self._THREAD_WAIT_S)
 
         calls = _buzzer_output_calls(gpio_mock)
         high_calls = [c for c in calls if c.args[1] == gpio_mock.HIGH]
-        assert len(high_calls) == _ALERT_BEEPS, (
-            f"預期 {_ALERT_BEEPS} 次 HIGH，實際 {len(high_calls)} 次"
-        )
+        assert len(high_calls) == 0
