@@ -339,11 +339,7 @@ those scores fails CI.
 **Yanting Lin (M2).** I owned the hardware/MQTT/orchestration and the DevOps:
 GPIO drivers (LED/Buzzer/Servo/HC-SR04), the `ActuatorController`, the MQTT
 publisher and topic schema, the 5-stage CI/CD on the self-hosted Jetson runner,
-and the Docker packaging. My hardest and most rewarding piece was the
-**shared-memory camera bridge** for problem 1 — diagnosing the Argus EGLDisplay
-wall layer by layer, then deciding to *stop* fighting it and bridge frames over
-POSIX shared memory instead. I also drove the buzzer nuisance-alarm fix and the
-release/merge workflow.
+and the Docker packaging. I had already discussed my reflections on the development process during the presentation itself; therefore, this final report focuses on reflections regarding potential improvements to the capstone project following that presentation. Feedback from the professor highlighted the need for more comprehensive test scenarios. Since we did not perform any model training, we achieved the desired results by adjusting parameter thresholds. A major issue arose with the "live" parameter—intended to detect a real person—where the score was very low (around 0.1) during actual testing, yet spiked suddenly when I moved out of the camera's frame. I was unable to find a suitable solution for this, meaning the "GRANT" scenario would only trigger sporadically. This made me realize that we should have kept our objectives simpler when designing the proposal. Secondly, I utilized AI to help resolve issues related to the Docker camera setup, and my testing was conducted on a Jetson device rather than within Docker; this aligns with the strategy mentioned during the presentation: building a basic version first to identify and resolve issues before gradually expanding functionality. Beyond learning about embedded systems and AI, I also gained a great deal of insight into development techniques through this course.
 
 ---
 
